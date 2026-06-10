@@ -3,6 +3,13 @@ const bcrypt = require('bcryptjs');
 const prisma = require('./lib/prisma');
 
 async function main() {
+  // Skip if already seeded (idempotent)
+  const existingUsers = await prisma.user.count();
+  if (existingUsers > 0) {
+    console.log('Database already seeded, skipping.');
+    return;
+  }
+
   console.log('Seeding database...');
 
   // Clean existing data
