@@ -1,0 +1,196 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       String @id @default(cuid())
+  email    String @unique
+  password String
+  name     String
+  role     String @default("admin")
+  phone    String @default("")
+  createdAt DateTime @default(now())
+
+  tasksCreated   Task[] @relation("AssignedBy")
+  tasksAssigned  Task[] @relation("AssignedTo")
+  messagesSent   Message[] @relation("FromUser")
+  messagesRecv   Message[] @relation("ToUser")
+  announcements  Announcement[]
+  notifications  Notification[]
+}
+
+model Student {
+  id             String   @id @default(cuid())
+  firstName      String
+  lastName       String
+  email          String   @unique
+  classId        String
+  className      String
+  dateOfBirth    String
+  gender         String   @default("male")
+  parentName     String
+  parentPhone    String
+  parentEmail    String
+  enrollmentDate String
+  status         String   @default("active")
+  createdAt      DateTime @default(now())
+
+  feeRecords      FeeRecord[]
+  attendanceRecs  Attendance[]
+}
+
+model Staff {
+  id               String   @id @default(cuid())
+  name             String
+  email            String   @unique
+  phone            String
+  role             String
+  department       String
+  staffType        String
+  assignedClass    String?
+  assignedSubjects String   @default("[]")
+  assignedRouteId  String?
+  assignedRouteName String?
+  status           String   @default("active")
+  hireDate         String
+  createdAt        DateTime @default(now())
+
+  route TransportRoute? @relation(fields: [assignedRouteId], references: [id])
+}
+
+model FeeRecord {
+  id          String @id @default(cuid())
+  studentId   String
+  studentName String
+  amount      Float
+  paid        Float  @default(0)
+  balance     Float  @default(0)
+  dueDate     String
+  status      String @default("unpaid")
+
+  student Student @relation(fields: [studentId], references: [id])
+}
+
+model TransportRoute {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  stops       String   @default("[]")
+  driverName  String
+  driverPhone String
+  capacity    Int
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+
+  drivers Staff[]
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  assignedTo  String
+  assignedBy  String
+  status      String   @default("pending")
+  priority    String   @default("medium")
+  dueDate     String
+  attachments String   @default("[]")
+  createdAt   DateTime @default(now())
+
+  assignee  User @relation("AssignedTo", fields: [assignedTo], references: [id])
+  assigner  User @relation("AssignedBy", fields: [assignedBy], references: [id])
+  comments  TaskComment[]
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  userName  String
+  content   String
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id])
+}
+
+model AcademicClass {
+  id        String @id @default(cuid())
+  name      String
+  section   String
+  students  Int    @default(0)
+  teacher   String @default("Unassigned")
+
+  subjects  Subject[]
+}
+
+model Subject {
+  id       String @id @default(cuid())
+  name     String
+  code     String
+  teacher  String @default("Unassigned")
+  classId  String
+
+  class AcademicClass @relation(fields: [classId], references: [id])
+}
+
+model Term {
+  id          String @id @default(cuid())
+  name        String
+  academicYear String
+  startDate   String
+  endDate     String
+  isActive    Boolean @default(false)
+}
+
+model Attendance {
+  id          String @id @default(cuid())
+  studentId   String
+  studentName String
+  classId     String
+  className   String
+  date        String
+  status      String @default("present")
+
+  student Student @relation(fields: [studentId], references: [id])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  subject   String
+  body      String
+  fromId    String
+  toId      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  sender   User @relation("FromUser", fields: [fromId], references: [id])
+  receiver User @relation("ToUser", fields: [toId], references: [id])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  authorId  String
+  priority  String   @default("normal")
+  createdAt DateTime @default(now())
+
+  author User @relation(fields: [authorId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
