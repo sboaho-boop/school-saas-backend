@@ -16,6 +16,7 @@ const communicationRoutes = require('./routes/communication');
 const billingRoutes = require('./routes/billing');
 const importRoutes = require('./routes/import');
 const walletRoutes = require('./routes/wallet');
+const parentRoutes = require('./routes/parent');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -33,6 +34,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/import', importRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/parent', parentRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/finance', financeRoutes);
