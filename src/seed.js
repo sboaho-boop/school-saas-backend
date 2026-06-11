@@ -5,6 +5,28 @@ const prisma = require('./lib/prisma');
 async function main() {
   const existingUsers = await prisma.user.count();
   if (existingUsers > 0) {
+    // Fix stale class IDs in student and attendance records
+    const classes = await prisma.academicClass.findMany();
+    const classMap = {};
+    classes.forEach((c) => { classMap[c.name] = c.id; });
+    if (Object.keys(classMap).length > 0) {
+      const students = await prisma.student.findMany({ take: 1 });
+      if (students.length > 0) {
+        const first = students[0];
+        const realId = classMap[first.className];
+        if (realId && first.classId !== realId) {
+          console.log('Fixing stale class IDs...');
+          for (const s of await prisma.student.findMany()) {
+            const rid = classMap[s.className];
+            if (rid && s.classId !== rid) await prisma.student.update({ where: { id: s.id }, data: { classId: rid } });
+          }
+          for (const a of await prisma.attendance.findMany()) {
+            const rid = classMap[a.className];
+            if (rid && a.classId !== rid) await prisma.attendance.update({ where: { id: a.id }, data: { classId: rid } });
+          }
+        }
+      }
+    }
     console.log('Database already seeded, skipping.');
     return;
   }
