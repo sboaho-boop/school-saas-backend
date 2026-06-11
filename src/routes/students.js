@@ -6,7 +6,13 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', async (req, res) => {
-  const students = await prisma.student.findMany({ orderBy: { createdAt: 'desc' } });
+  const where = {};
+  if (req.staff && req.staff.staffType === 'teaching' && req.staff.assignedClass) {
+    const cls = await prisma.academicClass.findFirst({ where: { name: req.staff.assignedClass } });
+    if (cls) where.classId = cls.id;
+    else return res.json([]);
+  }
+  const students = await prisma.student.findMany({ where, orderBy: { createdAt: 'desc' } });
   res.json(students);
 });
 

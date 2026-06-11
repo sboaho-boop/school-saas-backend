@@ -3,7 +3,6 @@ const bcrypt = require('bcryptjs');
 const prisma = require('./lib/prisma');
 
 async function main() {
-  // Skip if already seeded (idempotent)
   const existingUsers = await prisma.user.count();
   if (existingUsers > 0) {
     console.log('Database already seeded, skipping.');
@@ -12,12 +11,12 @@ async function main() {
 
   console.log('Seeding database...');
 
-  // Clean existing data
   await prisma.taskComment.deleteMany();
   await prisma.task.deleteMany();
   await prisma.message.deleteMany();
   await prisma.announcement.deleteMany();
   await prisma.notification.deleteMany();
+  await prisma.grade.deleteMany();
   await prisma.attendance.deleteMany();
   await prisma.feeRecord.deleteMany();
   await prisma.subject.deleteMany();
@@ -26,6 +25,7 @@ async function main() {
   await prisma.staff.deleteMany();
   await prisma.student.deleteMany();
   await prisma.transportRoute.deleteMany();
+  await prisma.passwordResetToken.deleteMany();
   await prisma.user.deleteMany();
 
   const hash = await bcrypt.hash('password123', 10);
@@ -39,12 +39,19 @@ async function main() {
     prisma.user.create({ data: { email: 'nont@school.com', password: hash, name: 'Alice Wanjiku', role: 'non-teaching' } }),
   ]);
 
+  const classes = await Promise.all([
+    prisma.academicClass.create({ data: { name: 'Grade 1 - Section A', section: 'Primary', teacher: 'Grace Akinyi' } }),
+    prisma.academicClass.create({ data: { name: 'Grade 2 - Section B', section: 'Primary', teacher: 'Peter Ochieng' } }),
+    prisma.academicClass.create({ data: { name: 'Grade 3 - Section A', section: 'Primary', teacher: 'Unassigned' } }),
+    prisma.academicClass.create({ data: { name: 'Grade 4 - Section B', section: 'Primary', teacher: 'Unassigned' } }),
+  ]);
+
   const students = await Promise.all([
-    prisma.student.create({ data: { firstName: 'Brian', lastName: 'Omondi', email: 'brian.omondi@student.com', classId: 'c1', className: 'Grade 1 - Section A', dateOfBirth: '2018-05-12', gender: 'male', parentName: 'David Omondi', parentPhone: '+254712345678', parentEmail: 'david@example.com', enrollmentDate: '2025-01-15', status: 'active' } }),
-    prisma.student.create({ data: { firstName: 'Mary', lastName: 'Wambui', email: 'mary.wambui@student.com', classId: 'c1', className: 'Grade 1 - Section A', dateOfBirth: '2018-08-22', gender: 'female', parentName: 'Samuel Wambui', parentPhone: '+254723456789', parentEmail: 'samuel@example.com', enrollmentDate: '2025-01-15', status: 'active' } }),
-    prisma.student.create({ data: { firstName: 'Kevin', lastName: 'Njenga', email: 'kevin.njenga@student.com', classId: 'c1', className: 'Grade 1 - Section A', dateOfBirth: '2018-03-01', gender: 'male', parentName: 'Paul Njenga', parentPhone: '+254734567890', parentEmail: 'paul@example.com', enrollmentDate: '2025-01-15', status: 'active' } }),
-    prisma.student.create({ data: { firstName: 'Diana', lastName: 'Chepkoech', email: 'diana.chepkoech@student.com', classId: 'c2', className: 'Grade 2 - Section B', dateOfBirth: '2017-11-30', gender: 'female', parentName: 'Joseph Chepkoech', parentPhone: '+254745678901', parentEmail: 'joseph@example.com', enrollmentDate: '2025-01-15', status: 'active' } }),
-    prisma.student.create({ data: { firstName: 'Eliud', lastName: 'Kipchoge', email: 'eliud.kipchoge@student.com', classId: 'c2', className: 'Grade 2 - Section B', dateOfBirth: '2017-07-14', gender: 'male', parentName: 'Henry Kipchoge', parentPhone: '+254756789012', parentEmail: 'henry@example.com', enrollmentDate: '2025-01-15', status: 'active' } }),
+    prisma.student.create({ data: { firstName: 'Brian', lastName: 'Omondi', email: 'brian.omondi@student.com', classId: classes[0].id, className: 'Grade 1 - Section A', dateOfBirth: '2018-05-12', gender: 'male', parentName: 'David Omondi', parentPhone: '+254712345678', parentEmail: 'david@example.com', enrollmentDate: '2025-01-15', status: 'active' } }),
+    prisma.student.create({ data: { firstName: 'Mary', lastName: 'Wambui', email: 'mary.wambui@student.com', classId: classes[0].id, className: 'Grade 1 - Section A', dateOfBirth: '2018-08-22', gender: 'female', parentName: 'Samuel Wambui', parentPhone: '+254723456789', parentEmail: 'samuel@example.com', enrollmentDate: '2025-01-15', status: 'active' } }),
+    prisma.student.create({ data: { firstName: 'Kevin', lastName: 'Njenga', email: 'kevin.njenga@student.com', classId: classes[0].id, className: 'Grade 1 - Section A', dateOfBirth: '2018-03-01', gender: 'male', parentName: 'Paul Njenga', parentPhone: '+254734567890', parentEmail: 'paul@example.com', enrollmentDate: '2025-01-15', status: 'active' } }),
+    prisma.student.create({ data: { firstName: 'Diana', lastName: 'Chepkoech', email: 'diana.chepkoech@student.com', classId: classes[1].id, className: 'Grade 2 - Section B', dateOfBirth: '2017-11-30', gender: 'female', parentName: 'Joseph Chepkoech', parentPhone: '+254745678901', parentEmail: 'joseph@example.com', enrollmentDate: '2025-01-15', status: 'active' } }),
+    prisma.student.create({ data: { firstName: 'Eliud', lastName: 'Kipchoge', email: 'eliud.kipchoge@student.com', classId: classes[1].id, className: 'Grade 2 - Section B', dateOfBirth: '2017-07-14', gender: 'male', parentName: 'Henry Kipchoge', parentPhone: '+254756789012', parentEmail: 'henry@example.com', enrollmentDate: '2025-01-15', status: 'active' } }),
   ]);
 
   const routes = await Promise.all([
@@ -68,13 +75,6 @@ async function main() {
     prisma.feeRecord.create({ data: { studentId: students[2].id, studentName: 'Kevin Njenga', amount: 45000, paid: 0, balance: 45000, dueDate: '2026-04-30', status: 'unpaid' } }),
     prisma.feeRecord.create({ data: { studentId: students[3].id, studentName: 'Diana Chepkoech', amount: 50000, paid: 50000, balance: 0, dueDate: '2026-04-30', status: 'paid' } }),
     prisma.feeRecord.create({ data: { studentId: students[4].id, studentName: 'Eliud Kipchoge', amount: 50000, paid: 10000, balance: 40000, dueDate: '2026-05-15', status: 'partial' } }),
-  ]);
-
-  const classes = await Promise.all([
-    prisma.academicClass.create({ data: { name: 'Grade 1 - Section A', section: 'Primary', students: 3, teacher: 'Grace Akinyi' } }),
-    prisma.academicClass.create({ data: { name: 'Grade 2 - Section B', section: 'Primary', students: 2, teacher: 'Peter Ochieng' } }),
-    prisma.academicClass.create({ data: { name: 'Grade 3 - Section A', section: 'Primary', students: 0, teacher: 'Unassigned' } }),
-    prisma.academicClass.create({ data: { name: 'Grade 4 - Section B', section: 'Primary', students: 0, teacher: 'Unassigned' } }),
   ]);
 
   await Promise.all([
@@ -114,9 +114,9 @@ async function main() {
   ]);
 
   await Promise.all([
-    prisma.attendance.create({ data: { studentId: students[0].id, studentName: 'Brian Omondi', classId: 'c1', className: 'Grade 1 - Section A', date: '2026-06-09', status: 'present' } }),
-    prisma.attendance.create({ data: { studentId: students[1].id, studentName: 'Mary Wambui', classId: 'c1', className: 'Grade 1 - Section A', date: '2026-06-09', status: 'present' } }),
-    prisma.attendance.create({ data: { studentId: students[2].id, studentName: 'Kevin Njenga', classId: 'c1', className: 'Grade 1 - Section A', date: '2026-06-09', status: 'absent' } }),
+    prisma.attendance.create({ data: { studentId: students[0].id, studentName: 'Brian Omondi', classId: classes[0].id, className: 'Grade 1 - Section A', date: '2026-06-09', status: 'present' } }),
+    prisma.attendance.create({ data: { studentId: students[1].id, studentName: 'Mary Wambui', classId: classes[0].id, className: 'Grade 1 - Section A', date: '2026-06-09', status: 'present' } }),
+    prisma.attendance.create({ data: { studentId: students[2].id, studentName: 'Kevin Njenga', classId: classes[0].id, className: 'Grade 1 - Section A', date: '2026-06-09', status: 'absent' } }),
   ]);
 
   console.log('Seed complete!');
