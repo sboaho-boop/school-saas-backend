@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = Router();
 router.use(authenticate);
@@ -10,7 +10,7 @@ router.get('/classes', async (req, res) => {
   res.json(classes);
 });
 
-router.post('/classes', async (req, res) => {
+router.post('/classes', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const cls = await prisma.academicClass.create({ data: req.body });
     res.status(201).json(cls);
@@ -19,7 +19,7 @@ router.post('/classes', async (req, res) => {
   }
 });
 
-router.delete('/classes/:id', async (req, res) => {
+router.delete('/classes/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     await prisma.subject.deleteMany({ where: { classId: req.params.id } });
     await prisma.academicClass.delete({ where: { id: req.params.id } });
@@ -34,7 +34,7 @@ router.get('/subjects', async (req, res) => {
   res.json(subjects);
 });
 
-router.post('/subjects', async (req, res) => {
+router.post('/subjects', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const subject = await prisma.subject.create({ data: req.body });
     res.status(201).json(subject);
@@ -43,7 +43,7 @@ router.post('/subjects', async (req, res) => {
   }
 });
 
-router.delete('/subjects/:id', async (req, res) => {
+router.delete('/subjects/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     await prisma.subject.delete({ where: { id: req.params.id } });
     res.json({ ok: true });
@@ -57,7 +57,7 @@ router.get('/terms', async (req, res) => {
   res.json(terms);
 });
 
-router.post('/terms', async (req, res) => {
+router.post('/terms', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const term = await prisma.term.create({ data: req.body });
     res.status(201).json(term);
@@ -66,7 +66,7 @@ router.post('/terms', async (req, res) => {
   }
 });
 
-router.put('/terms/:id/activate', async (req, res) => {
+router.put('/terms/:id/activate', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     await prisma.term.updateMany({ where: { isActive: true }, data: { isActive: false } });
     const term = await prisma.term.update({ where: { id: req.params.id }, data: { isActive: true } });

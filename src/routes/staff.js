@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = Router();
 router.use(authenticate);
@@ -16,7 +16,7 @@ router.get('/:id', async (req, res) => {
   res.json(member);
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const data = { ...req.body };
     if (data.assignedSubjects) data.assignedSubjects = JSON.stringify(data.assignedSubjects);
@@ -27,7 +27,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const data = { ...req.body };
     if (data.assignedSubjects) data.assignedSubjects = JSON.stringify(data.assignedSubjects);
@@ -38,7 +38,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     await prisma.staff.delete({ where: { id: req.params.id } });
     res.json({ ok: true });

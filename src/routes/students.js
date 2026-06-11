@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = Router();
 router.use(authenticate);
@@ -22,7 +22,7 @@ router.get('/:id', async (req, res) => {
   res.json(student);
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const student = await prisma.student.create({ data: req.body });
     res.status(201).json(student);
@@ -31,7 +31,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const student = await prisma.student.update({ where: { id: req.params.id }, data: req.body });
     res.json(student);
@@ -40,7 +40,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     await prisma.student.delete({ where: { id: req.params.id } });
     res.json({ ok: true });
