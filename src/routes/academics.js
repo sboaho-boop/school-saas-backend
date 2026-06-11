@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { logAudit } = require('../middleware/audit');
 
 const router = Router();
 router.use(authenticate);
@@ -13,6 +14,7 @@ router.get('/classes', async (req, res) => {
 router.post('/classes', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const cls = await prisma.academicClass.create({ data: req.body });
+    await logAudit(req, 'create', 'class', cls.id, { name: cls.name });
     res.status(201).json(cls);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -21,8 +23,10 @@ router.post('/classes', requireRole('headteacher', 'admin'), async (req, res) =>
 
 router.delete('/classes/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
+    const cls = await prisma.academicClass.findUnique({ where: { id: req.params.id } });
     await prisma.subject.deleteMany({ where: { classId: req.params.id } });
     await prisma.academicClass.delete({ where: { id: req.params.id } });
+    await logAudit(req, 'delete', 'class', req.params.id, { name: cls ? cls.name : '' });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -37,6 +41,7 @@ router.get('/subjects', async (req, res) => {
 router.post('/subjects', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const subject = await prisma.subject.create({ data: req.body });
+    await logAudit(req, 'create', 'subject', subject.id, { name: subject.name });
     res.status(201).json(subject);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -45,7 +50,9 @@ router.post('/subjects', requireRole('headteacher', 'admin'), async (req, res) =
 
 router.delete('/subjects/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
+    const subject = await prisma.subject.findUnique({ where: { id: req.params.id } });
     await prisma.subject.delete({ where: { id: req.params.id } });
+    await logAudit(req, 'delete', 'subject', req.params.id, { name: subject ? subject.name : '' });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });

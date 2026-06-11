@@ -14,6 +14,8 @@ const academicRoutes = require('./routes/academics');
 const attendanceRoutes = require('./routes/attendance');
 const communicationRoutes = require('./routes/communication');
 const billingRoutes = require('./routes/billing');
+const importRoutes = require('./routes/import');
+const walletRoutes = require('./routes/wallet');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -29,6 +31,8 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Dat
 
 app.use('/api/auth', authRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/import', importRoutes);
+app.use('/api/wallet', walletRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/finance', financeRoutes);
@@ -38,6 +42,15 @@ app.use('/api/marks', markRoutes);
 app.use('/api/academics', academicRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/communication', communicationRoutes);
+
+app.get('/api/audit-logs', require('./middleware/auth').authenticate, require('./middleware/auth').requireRole('headteacher', 'admin'), async (req, res) => {
+  try {
+    const logs = await (require('./lib/prisma')).auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
+    res.json(logs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

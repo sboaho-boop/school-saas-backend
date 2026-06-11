@@ -55,6 +55,7 @@ model Student {
   feeRecords      FeeRecord[]
   attendanceRecs  Attendance[]
   grades          Grade[]
+  wallet          StudentWallet?
 }
 
 model Staff {
@@ -223,6 +224,47 @@ model Subscription {
   trialEndsAt       DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  userName   String
+  action     String
+  resource   String
+  resourceId String
+  details    String   @default("")
+  createdAt  DateTime @default(now())
+}
+
+model StudentWallet {
+  id          String   @id @default(cuid())
+  studentId   String   @unique
+  studentName String
+  balance     Float    @default(0)
+  totalSpent  Float    @default(0)
+  cardUid     String?  @unique
+  frozen      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id])
+  transactions Transaction[]
+}
+
+model Transaction {
+  id         String   @id @default(cuid())
+  walletId   String
+  type       String
+  amount     Float
+  balanceAfter Float
+  method     String   @default("card")
+  service    String   @default("")
+  terminalId String   @default("")
+  reference  String   @default("")
+  createdAt  DateTime @default(now())
+
+  wallet StudentWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 }
 
 model Notification {

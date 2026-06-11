@@ -2,6 +2,7 @@ const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { checkPlanLimit } = require('../middleware/planLimit');
+const { logAudit } = require('../middleware/audit');
 
 const router = Router();
 router.use(authenticate);
@@ -26,6 +27,7 @@ router.get('/:id', async (req, res) => {
 router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('student'), async (req, res) => {
   try {
     const student = await prisma.student.create({ data: req.body });
+    await logAudit(req, 'create', 'student', student.id, { name: `${student.firstName} ${student.lastName}` });
     res.status(201).json(student);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -35,6 +37,7 @@ router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('student'),
 router.put('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const student = await prisma.student.update({ where: { id: req.params.id }, data: req.body });
+    await logAudit(req, 'update', 'student', student.id, { updates: Object.keys(req.body) });
     res.json(student);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -43,7 +46,9 @@ router.put('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
 
 router.delete('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
+    const student = await prisma.student.findUnique({ where: { id: req.params.id } });
     await prisma.student.delete({ where: { id: req.params.id } });
+    await logAudit(req, 'delete', 'student', req.params.id, { name: student ? `${student.firstName} ${student.lastName}` : '' });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
