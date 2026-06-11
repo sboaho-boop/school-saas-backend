@@ -27,6 +27,11 @@ async function main() {
         }
       }
     }
+    const existingSub = await prisma.subscription.findFirst();
+    if (!existingSub) {
+      await prisma.subscription.create({ data: {} });
+      console.log('Created default subscription.');
+    }
     console.log('Database already seeded, skipping.');
     return;
   }
@@ -48,6 +53,7 @@ async function main() {
   await prisma.student.deleteMany();
   await prisma.transportRoute.deleteMany();
   await prisma.passwordResetToken.deleteMany();
+  await prisma.subscription.deleteMany();
   await prisma.user.deleteMany();
 
   const hash = await bcrypt.hash('password123', 10);
@@ -60,6 +66,8 @@ async function main() {
     prisma.user.create({ data: { email: 'teacher2@school.com', password: hash, name: 'Peter Ochieng', role: 'teaching' } }),
     prisma.user.create({ data: { email: 'nont@school.com', password: hash, name: 'Alice Wanjiku', role: 'non-teaching' } }),
   ]);
+
+  await prisma.subscription.create({ data: { plan: 'free', status: 'active', studentLimit: 30, staffLimit: 10 } });
 
   const classes = await Promise.all([
     prisma.academicClass.create({ data: { name: 'Grade 1 - Section A', section: 'Primary', teacher: 'Grace Akinyi' } }),

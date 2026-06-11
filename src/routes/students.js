@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { checkPlanLimit } = require('../middleware/planLimit');
 
 const router = Router();
 router.use(authenticate);
@@ -22,7 +23,7 @@ router.get('/:id', async (req, res) => {
   res.json(student);
 });
 
-router.post('/', requireRole('headteacher', 'admin'), async (req, res) => {
+router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('student'), async (req, res) => {
   try {
     const student = await prisma.student.create({ data: req.body });
     res.status(201).json(student);
