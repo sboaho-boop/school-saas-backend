@@ -133,6 +133,7 @@ async function main() {
     const activeTerm = await prisma.term.findFirst({ where: { schoolId, isActive: true } });
 
     // Generate students
+    const demoHash = await bcrypt.hash('demo123', 10);
     const shuffledFirst = shuffle(FIRST_NAMES);
     const shuffledLast = shuffle(LAST_NAMES);
     const studentIds = [];
@@ -146,18 +147,21 @@ async function main() {
       const email = `${first.toLowerCase()}.${last.toLowerCase()}.s${schoolId.slice(-4)}${i}@student.com`;
       const gender = i % 2 === 0 ? 'male' : 'female';
       const dob = `${2014 + Math.floor(i / 20)}-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}`;
-      const student = await prisma.student.create({
-        data: {
-          firstName: first, lastName: last, email,
-          classId: cls.id, className: cls.name,
-          dateOfBirth: dob, gender,
-          photoUrl: `https://api.dicebear.com/9.x/avataaars/svg?seed=${first}${last}${schoolId.slice(-4)}${i}`,
-          parentName: `${parentFirst} ${parentLast}`,
-          parentPhone: `+233${String(200000000 + i).slice(0, 9)}`,
-          parentEmail: `${parentFirst.toLowerCase()}.${i}.s${schoolId.slice(-4)}@example.com`,
-          enrollmentDate: '2025-09-01', status: 'active', schoolId,
-        }
-      });
+      const data = {
+        firstName: first, lastName: last, email,
+        classId: cls.id, className: cls.name,
+        dateOfBirth: dob, gender,
+        photoUrl: `https://api.dicebear.com/9.x/avataaars/svg?seed=${first}${last}${schoolId.slice(-4)}${i}`,
+        parentName: `${parentFirst} ${parentLast}`,
+        parentPhone: `+233${String(200000000 + i).slice(0, 9)}`,
+        parentEmail: `${parentFirst.toLowerCase()}.${i}.s${schoolId.slice(-4)}@example.com`,
+        enrollmentDate: '2025-09-01', status: 'active', schoolId,
+      };
+      if (i < 2) {
+        data.parentPassword = demoHash;
+        data.password = demoHash;
+      }
+      const student = await prisma.student.create({ data });
       studentIds.push(student.id);
       studentNames.push(`${first} ${last}`);
     }
@@ -290,6 +294,10 @@ async function main() {
   console.log('School 5:', s5.schoolName, '(ID:', s5.schoolId, ')  — headteacher@sunrise.com');
   console.log('Demo accounts (password: password123):');
   console.log('  headteacher, admin, accountant, teacher1, teacher2, nont @ each school\'s domain');
+  console.log('\nStudent demo login (password: demo123):');
+  console.log('  First 2 students in each school have parentPassword and student password set to "demo123".');
+  console.log('  Parent login: /parent/login  —  Student login: /student/login');
+  console.log('  Use the student\'s parentEmail with password "demo123".');
   console.log(`\nTotals: ${totalStudents} students, ${totalGrades} grades, ${totalWallets} wallets, ${totalAttendance} attendance, ${totalFees} fee records`);
 }
 
