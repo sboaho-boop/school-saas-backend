@@ -7,7 +7,7 @@ router.use(authenticate);
 
 router.get('/messages', async (req, res) => {
   const messages = await prisma.message.findMany({
-    where: { OR: [{ fromId: req.user.id }, { toId: req.user.id }] },
+    where: { schoolId: req.schoolId, OR: [{ fromId: req.user.id }, { toId: req.user.id }] },
     include: { sender: { select: { id: true, name: true, email: true } }, receiver: { select: { id: true, name: true, email: true } } },
     orderBy: { createdAt: 'desc' },
   });
@@ -17,7 +17,7 @@ router.get('/messages', async (req, res) => {
 router.post('/messages', async (req, res) => {
   try {
     const msg = await prisma.message.create({
-      data: { subject: req.body.subject, body: req.body.body, fromId: req.user.id, toId: req.body.toId },
+      data: { subject: req.body.subject, body: req.body.body, fromId: req.user.id, toId: req.body.toId, schoolId: req.schoolId },
       include: { sender: { select: { id: true, name: true, email: true } }, receiver: { select: { id: true, name: true, email: true } } },
     });
     res.status(201).json(msg);
@@ -37,6 +37,7 @@ router.put('/messages/:id/read', async (req, res) => {
 
 router.get('/announcements', async (req, res) => {
   const announcements = await prisma.announcement.findMany({
+    where: { schoolId: req.schoolId },
     include: { author: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'desc' },
   });
@@ -46,7 +47,7 @@ router.get('/announcements', async (req, res) => {
 router.post('/announcements', async (req, res) => {
   try {
     const ann = await prisma.announcement.create({
-      data: { title: req.body.title, body: req.body.body, authorId: req.user.id, priority: req.body.priority || 'normal' },
+      data: { title: req.body.title, body: req.body.body, authorId: req.user.id, priority: req.body.priority || 'normal', schoolId: req.schoolId },
       include: { author: { select: { id: true, name: true } } },
     });
     res.status(201).json(ann);

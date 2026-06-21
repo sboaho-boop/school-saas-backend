@@ -7,10 +7,10 @@ router.use(authenticate);
 
 router.get('/', async (req, res) => {
   const { classId, className, date } = req.query;
-  const where = {};
+  const where = { schoolId: req.schoolId };
   if (classId) where.classId = classId;
   else if (req.staff && req.staff.staffType === 'teaching' && req.staff.assignedClass) {
-    const cls = await prisma.academicClass.findFirst({ where: { name: req.staff.assignedClass } });
+    const cls = await prisma.academicClass.findFirst({ where: { name: req.staff.assignedClass, schoolId: req.schoolId } });
     if (cls) where.classId = cls.id;
     else return res.json([]);
   }
@@ -23,12 +23,14 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { studentId, studentName, classId, className, date, status } = req.body;
-    const existing = await prisma.attendance.findFirst({ where: { studentId, date } });
+    const existing = await prisma.attendance.findFirst({ where: { studentId, date, schoolId: req.schoolId } });
     if (existing) {
       const updated = await prisma.attendance.update({ where: { id: existing.id }, data: { status } });
       return res.json(updated);
     }
-    const record = await prisma.attendance.create({ data: { studentId, studentName, classId, className, date, status } });
+    const record = await prisma.attendance.create({
+      data: { studentId, studentName, classId, className, date, status, schoolId: req.schoolId },
+    });
     res.status(201).json(record);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -37,15 +39,15 @@ router.post('/', async (req, res) => {
 
 router.post('/batch', async (req, res) => {
   try {
-    const { records } = req.body; // [{ studentId, studentName, classId, className, date, status }]
+    const { records } = req.body;
     const results = [];
     for (const r of records) {
-      const existing = await prisma.attendance.findFirst({ where: { studentId: r.studentId, date: r.date } });
+      const existing = await prisma.attendance.findFirst({ where: { studentId: r.studentId, date: r.date, schoolId: req.schoolId } });
       if (existing) {
         const updated = await prisma.attendance.update({ where: { id: existing.id }, data: { status: r.status } });
         results.push(updated);
       } else {
-        const created = await prisma.attendance.create({ data: r });
+        const created = await prisma.attendance.create({ data: { ...r, schoolId: req.schoolId } });
         results.push(created);
       }
     }

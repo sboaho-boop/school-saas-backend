@@ -7,21 +7,92 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id       String @id @default(cuid())
-  email    String @unique
-  password String
-  name     String
-  role     String @default("admin")
-  phone    String @default("")
+model SuperAdmin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
   createdAt DateTime @default(now())
+}
 
-  tasksCreated   Task[] @relation("AssignedBy")
-  tasksAssigned  Task[] @relation("AssignedTo")
-  messagesSent   Message[] @relation("FromUser")
-  messagesRecv   Message[] @relation("ToUser")
+model School {
+  id           String   @id @default(cuid())
+  code         String?  @unique
+  name         String
+  pinThreshold  Float    @default(20)
+  createdAt    DateTime @default(now())
+
+  users          User[]
+  students       Student[]
+  staff          Staff[]
+  campuses       Campus[]
+  feeRecords     FeeRecord[]
+  transportRoutes TransportRoute[]
+  tasks          Task[]
+  taskComments   TaskComment[]
+  academicClasses AcademicClass[]
+  subjects       Subject[]
+  terms          Term[]
+  attendances      Attendance[]
+  staffAttendances StaffAttendance[]
+  grades         Grade[]
+  messages       Message[]
+  announcements  Announcement[]
+  subscriptions  Subscription[]
+  auditLogs      AuditLog[]
+  wallets        StudentWallet[]
+  transactions   Transaction[]
+  notifications  Notification[]
+  cardOrders     CardOrder[]
+  studentReports StudentReport[]
+  privacyConsents PrivacyConsent[]
+}
+
+model User {
+  id               String    @id @default(cuid())
+  schoolId         String
+  campusId         String?
+  email            String
+  password         String
+  name             String
+  role             String    @default("admin")
+  phone            String    @default("")
+  twoFactorSecret  String?
+  twoFactorEnabled Boolean   @default(false)
+  isVerified       Boolean   @default(false)
+  verificationCode String?
+  verificationExpiry DateTime?
+  smsPreferences   String    @default("{}")
+  createdAt        DateTime  @default(now())
+
+  school         School          @relation(fields: [schoolId], references: [id])
+  campus         Campus?         @relation("CampusUsers", fields: [campusId], references: [id])
+  headTeacherFor Campus?         @relation("CampusHeadTeacher")
+  tasksCreated   Task[]          @relation("AssignedBy")
+  tasksAssigned  Task[]          @relation("AssignedTo")
+  messagesSent   Message[]       @relation("FromUser")
+  messagesRecv   Message[]       @relation("ToUser")
   announcements  Announcement[]
   notifications  Notification[]
+
+  @@unique([schoolId, email])
+}
+
+model Campus {
+  id          String   @id @default(cuid())
+  schoolId    String
+  name        String
+  code        String
+  address     String   @default("")
+  headTeacherId String? @unique
+  createdAt   DateTime @default(now())
+
+  school      School  @relation(fields: [schoolId], references: [id])
+  headTeacher User?   @relation("CampusHeadTeacher", fields: [headTeacherId], references: [id])
+  users       User[]  @relation("CampusUsers")
+  staff       Staff[]
+
+  @@unique([schoolId, code])
 }
 
 model PasswordResetToken {
@@ -38,30 +109,40 @@ model PasswordResetToken {
 
 model Student {
   id             String   @id @default(cuid())
+  schoolId       String
   firstName      String
   lastName       String
-  email          String   @unique
+  email          String
+  password       String?
   classId        String
   className      String
   dateOfBirth    String
   gender         String   @default("male")
+  photoUrl       String?
   parentName     String
   parentPhone    String
   parentEmail    String
+  parentPassword String?
   enrollmentDate String
   status         String   @default("active")
   createdAt      DateTime @default(now())
 
+  school          School          @relation(fields: [schoolId], references: [id])
   feeRecords      FeeRecord[]
   attendanceRecs  Attendance[]
   grades          Grade[]
   wallet          StudentWallet?
+  reports         StudentReport[]
+
+  @@unique([schoolId, email])
 }
 
 model Staff {
   id               String   @id @default(cuid())
+  schoolId         String
+  campusId         String?
   name             String
-  email            String   @unique
+  email            String
   phone            String
   role             String
   department       String
@@ -70,15 +151,25 @@ model Staff {
   assignedSubjects String   @default("[]")
   assignedRouteId  String?
   assignedRouteName String?
+  cardUid          String?
+  wristbandUid     String?
   status           String   @default("active")
   hireDate         String
   createdAt        DateTime @default(now())
 
-  route TransportRoute? @relation(fields: [assignedRouteId], references: [id])
+  school          School             @relation(fields: [schoolId], references: [id])
+  campus          Campus?            @relation(fields: [campusId], references: [id])
+  route           TransportRoute?    @relation(fields: [assignedRouteId], references: [id])
+  attendanceRecs  StaffAttendance[]
+
+  @@unique([schoolId, email])
+  @@unique([schoolId, cardUid])
+  @@unique([schoolId, wristbandUid])
 }
 
 model FeeRecord {
   id          String @id @default(cuid())
+  schoolId    String
   studentId   String
   studentName String
   amount      Float
@@ -87,11 +178,13 @@ model FeeRecord {
   dueDate     String
   status      String @default("unpaid")
 
+  school  School  @relation(fields: [schoolId], references: [id])
   student Student @relation(fields: [studentId], references: [id])
 }
 
 model TransportRoute {
   id          String   @id @default(cuid())
+  schoolId    String
   name        String
   description String
   stops       String   @default("[]")
@@ -101,11 +194,13 @@ model TransportRoute {
   status      String   @default("active")
   createdAt   DateTime @default(now())
 
+  school  School @relation(fields: [schoolId], references: [id])
   drivers Staff[]
 }
 
 model Task {
   id          String   @id @default(cuid())
+  schoolId    String
   title       String
   description String
   assignedTo  String
@@ -116,53 +211,64 @@ model Task {
   attachments String   @default("[]")
   createdAt   DateTime @default(now())
 
-  assignee  User @relation("AssignedTo", fields: [assignedTo], references: [id])
-  assigner  User @relation("AssignedBy", fields: [assignedBy], references: [id])
+  school   School        @relation(fields: [schoolId], references: [id])
+  assignee  User         @relation("AssignedTo", fields: [assignedTo], references: [id])
+  assigner  User         @relation("AssignedBy", fields: [assignedBy], references: [id])
   comments  TaskComment[]
 }
 
 model TaskComment {
   id        String   @id @default(cuid())
+  schoolId  String
   taskId    String
   userId    String
   userName  String
   content   String
   createdAt DateTime @default(now())
 
-  task Task @relation(fields: [taskId], references: [id])
+  school School @relation(fields: [schoolId], references: [id])
+  task   Task   @relation(fields: [taskId], references: [id])
 }
 
 model AcademicClass {
-  id        String @id @default(cuid())
-  name      String
-  section   String
-  students  Int    @default(0)
-  teacher   String @default("Unassigned")
+  id       String @id @default(cuid())
+  schoolId String
+  name     String
+  section  String
+  students Int    @default(0)
+  teacher  String @default("Unassigned")
 
-  subjects  Subject[]
+  school   School    @relation(fields: [schoolId], references: [id])
+  subjects Subject[]
 }
 
 model Subject {
   id       String @id @default(cuid())
+  schoolId String
   name     String
   code     String
   teacher  String @default("Unassigned")
   classId  String
 
-  class AcademicClass @relation(fields: [classId], references: [id])
+  school School        @relation(fields: [schoolId], references: [id])
+  class  AcademicClass @relation(fields: [classId], references: [id])
 }
 
 model Term {
-  id          String @id @default(cuid())
-  name        String
+  id           String @id @default(cuid())
+  schoolId     String
+  name         String
   academicYear String
-  startDate   String
-  endDate     String
-  isActive    Boolean @default(false)
+  startDate    String
+  endDate      String
+  isActive     Boolean @default(false)
+
+  school School @relation(fields: [schoolId], references: [id])
 }
 
 model Attendance {
   id          String @id @default(cuid())
+  schoolId    String
   studentId   String
   studentName String
   classId     String
@@ -170,25 +276,45 @@ model Attendance {
   date        String
   status      String @default("present")
 
+  school  School  @relation(fields: [schoolId], references: [id])
   student Student @relation(fields: [studentId], references: [id])
 }
 
-model Grade {
+model StaffAttendance {
   id        String   @id @default(cuid())
-  studentId String
-  subjectId String
-  classId   String
-  termId    String
-  score     Float
-  grade     String   @default("")
-  remarks   String   @default("")
+  schoolId  String
+  staffId   String
+  staffName String
+  date      String
+  status    String   @default("present")
   createdAt DateTime @default(now())
 
+  school School @relation(fields: [schoolId], references: [id])
+  staff  Staff  @relation(fields: [staffId], references: [id])
+
+  @@unique([staffId, date])
+}
+
+model Grade {
+  id         String   @id @default(cuid())
+  schoolId   String
+  studentId  String
+  subjectId  String
+  classId    String
+  termId     String
+  score      Float
+  grade      String   @default("")
+  components String   @default("{}")
+  remarks    String   @default("")
+  createdAt  DateTime @default(now())
+
+  school  School  @relation(fields: [schoolId], references: [id])
   student Student @relation(fields: [studentId], references: [id])
 }
 
 model Message {
   id        String   @id @default(cuid())
+  schoolId  String
   subject   String
   body      String
   fromId    String
@@ -196,38 +322,45 @@ model Message {
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  sender   User @relation("FromUser", fields: [fromId], references: [id])
-  receiver User @relation("ToUser", fields: [toId], references: [id])
+  school   School @relation(fields: [schoolId], references: [id])
+  sender   User   @relation("FromUser", fields: [fromId], references: [id])
+  receiver User   @relation("ToUser", fields: [toId], references: [id])
 }
 
 model Announcement {
   id        String   @id @default(cuid())
+  schoolId  String
   title     String
   body      String
   authorId  String
   priority  String   @default("normal")
   createdAt DateTime @default(now())
 
-  author User @relation(fields: [authorId], references: [id])
+  school School @relation(fields: [schoolId], references: [id])
+  author User   @relation(fields: [authorId], references: [id])
 }
 
 model Subscription {
   id            String   @id @default(cuid())
+  schoolId      String   @unique
   plan          String   @default("free")
   status        String   @default("active")
-  studentLimit  Int      @default(30)
+  studentLimit  Int      @default(100)
   staffLimit    Int      @default(10)
-  stripeCustomerId String?
-  stripeSubscriptionId String?
+  pendingPlan   String?
+  pendingCheckoutRef String?
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
   trialEndsAt       DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
 }
 
 model AuditLog {
   id         String   @id @default(cuid())
+  schoolId   String
   userId     String
   userName   String
   action     String
@@ -235,40 +368,69 @@ model AuditLog {
   resourceId String
   details    String   @default("")
   createdAt  DateTime @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
 }
 
 model StudentWallet {
-  id          String   @id @default(cuid())
-  studentId   String   @unique
-  studentName String
-  balance     Float    @default(0)
-  totalSpent  Float    @default(0)
-  cardUid     String?  @unique
-  frozen      Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  schoolId        String
+  studentId       String   @unique
+  studentName     String
+  balance         Float    @default(0)
+  totalSpent      Float    @default(0)
+  cardUid         String?
+  wristbandUid    String?
+  transactionPin  String?
+  dailyLimit      Float    @default(0)
+  todaySpent      Float    @default(0)
+  lastSpentReset  String   @default("")
+  frozen          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  student Student @relation(fields: [studentId], references: [id])
+  school       School        @relation(fields: [schoolId], references: [id])
+  student      Student       @relation(fields: [studentId], references: [id])
   transactions Transaction[]
+
+  @@unique([schoolId, cardUid])
+  @@unique([schoolId, wristbandUid])
 }
 
 model Transaction {
-  id         String   @id @default(cuid())
-  walletId   String
-  type       String
-  amount     Float
+  id          String   @id @default(cuid())
+  schoolId    String
+  walletId    String
+  type        String
+  amount      Float
   balanceAfter Float
-  method     String   @default("card")
-  service    String   @default("")
-  terminalId String   @default("")
-  reference  String   @default("")
-  createdAt  DateTime @default(now())
+  method      String   @default("card")
+  service     String   @default("")
+  terminalId  String   @default("")
+  reference   String   @default("")
+  createdAt   DateTime @default(now())
 
+  school School        @relation(fields: [schoolId], references: [id])
   wallet StudentWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+model CardOrder {
+  id          String   @id @default(cuid())
+  schoolId    String
+  schoolName  String
+  studentIds  String
+  quantity    Int
+  status      String   @default("pending")
+  notes       String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
 }
 
 model Notification {
   id        String   @id @default(cuid())
+  schoolId  String
   userId    String
   type      String
   title     String
@@ -276,5 +438,44 @@ model Notification {
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id])
+  school School @relation(fields: [schoolId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+model PushSubscription {
+  id           String @id @default(cuid())
+  userId       String
+  schoolId     String
+  endpoint     String @unique
+  auth         String
+  p256dh       String
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, endpoint])
+}
+
+model StudentReport {
+  id        String   @id @default(cuid())
+  studentId String
+  schoolId  String
+  title     String
+  content   String
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+
+  student Student @relation(fields: [studentId], references: [id])
+  school  School  @relation(fields: [schoolId], references: [id])
+}
+
+model PrivacyConsent {
+  id        String   @id @default(cuid())
+  userId    String
+  schoolId  String
+  type      String   @default("privacy_policy")
+  version   String   @default("1.0")
+  ip        String   @default("")
+  userAgent String   @default("")
+  createdAt DateTime @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
 }

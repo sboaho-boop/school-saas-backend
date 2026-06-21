@@ -1,20 +1,17 @@
 const express = require('express');
-const router = express.Router();
+const crypto = require('crypto');
 const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { sendSubscriptionAlert } = require('../lib/sms');
+const { createCheckout } = require('../lib/hubtel-payment');
 
 const PLANS = {
-  free: { name: 'Free', studentLimit: 30, staffLimit: 10, priceId: null, amount: 0 },
-  pro: { name: 'Professional', studentLimit: 200, staffLimit: 50, priceId: null, amount: 2999 },
-  enterprise: { name: 'Enterprise', studentLimit: 999999, staffLimit: 999999, priceId: null, amount: 9999 },
+  free: { name: 'Starter', studentLimit: 100, staffLimit: 10, priceId: null, amount: 0 },
+  pro: { name: 'Professional', studentLimit: 1000, staffLimit: 50, priceId: null, amount: 29900 },
+  enterprise: { name: 'Enterprise', studentLimit: 999999, staffLimit: 999999, priceId: null, amount: 99900 },
 };
 
-function getOrCreateStripe() {
-  if (process.env.STRIPE_SECRET_KEY) {
-    return require('stripe')(process.env.STRIPE_SECRET_KEY);
-  }
-  return null;
-}
+const router = express.Router();
 
 router.get('/plans', (req, res) => {
   res.json(Object.entries(PLANS).map(([id, p]) => ({ id, ...p })));
@@ -22,17 +19,14 @@ router.get('/plans', (req, res) => {
 
 router.get('/subscription', authenticate, async (req, res) => {
   try {
-    let sub = await prisma.subscription.findFirst({ orderBy: { createdAt: 'desc' } });
+    let sub = await prisma.subscription.findUnique({ where: { schoolId: req.schoolId } });
     if (!sub) {
-      sub = await prisma.subscription.create({ data: {} });
+      sub = await prisma.subscription.create({ data: { schoolId: req.schoolId } });
     }
-    const studentCount = await prisma.student.count();
-    const staffCount = await prisma.staff.count();
+    const studentCount = await prisma.student.count({ where: { schoolId: req.schoolId } });
+    const staffCount = await prisma.staff.count({ where: { schoolId: req.schoolId } });
     res.json({
       ...sub,
-      plan: sub.plan,
-      currentPeriodEnd: sub.currentPeriodEnd,
-      trialEndsAt: sub.trialEndsAt,
       studentCount,
       staffCount,
       planName: PLANS[sub.plan]?.name || 'Free',
@@ -43,149 +37,93 @@ router.get('/subscription', authenticate, async (req, res) => {
   }
 });
 
-router.post('/create-checkout-session', authenticate, requireRole('headteacher', 'admin'), async (req, res) => {
+router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const { plan } = req.body;
     if (!PLANS[plan]) return res.status(400).json({ error: 'Invalid plan' });
-    const priceId = PLANS[plan].priceId;
-    if (!priceId) return res.status(400).json({ error: 'No price configured for this plan' });
-
-    const stripe = getOrCreateStripe();
-    if (!stripe) return res.status(400).json({ error: 'Stripe not configured' });
-
-    let sub = await prisma.subscription.findFirst({ orderBy: { createdAt: 'desc' } });
-    if (!sub) sub = await prisma.subscription.create({ data: {} });
-
-    let customerId = sub.stripeCustomerId;
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: req.user.email,
-        metadata: { subscriptionId: sub.id },
+    if (PLANS[plan].amount === 0) {
+      const limits = PLANS[plan];
+      let sub = await prisma.subscription.findUnique({ where: { schoolId: req.schoolId } });
+      if (!sub) sub = await prisma.subscription.create({ data: { schoolId: req.schoolId } });
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { plan, status: 'active', studentLimit: limits.studentLimit, staffLimit: limits.staffLimit },
       });
-      customerId = customer.id;
-      await prisma.subscription.update({ where: { id: sub.id }, data: { stripeCustomerId: customerId } });
+      if (req.user.phone) sendSubscriptionAlert(req.user.phone, plan, 'upgraded').catch(() => {});
+      return res.json({ message: `Downgraded to ${plan}` });
     }
-
-    const session = await stripe.checkout.sessions.create({
-      customer: customerId,
-      mode: 'subscription',
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${req.headers.origin || 'http://localhost:3000'}/settings?billing=success`,
-      cancel_url: `${req.headers.origin || 'http://localhost:3000'}/settings?billing=canceled`,
-      metadata: { subscriptionId: sub.id, plan },
+    const reference = crypto.randomBytes(12).toString('hex');
+    const checkout = await createCheckout({
+      amount: PLANS[plan].amount,
+      title: `EduPlatform ${PLANS[plan].name} Plan`,
+      description: `${PLANS[plan].name} subscription for ${req.user.name}`,
+      clientReference: reference,
+      payeeName: req.user.name,
+      payeeEmail: req.user.email,
+      payeeMobileNumber: req.user.phone,
     });
-
-    res.json({ url: session.url });
+    await prisma.subscription.upsert({
+      where: { schoolId: req.schoolId },
+      update: { pendingPlan: plan, pendingCheckoutRef: reference },
+      create: { schoolId: req.schoolId, pendingPlan: plan, pendingCheckoutRef: reference },
+    });
+    res.json({ checkoutUrl: checkout.checkoutUrl, reference });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Failed to create checkout session' });
+    res.status(500).json({ error: err.message || 'Failed to create payment checkout' });
   }
 });
 
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  const stripe = getOrCreateStripe();
-  if (!stripe) return res.status(200).json({ received: true });
-
-  let event;
+router.post('/hubtel-webhook', async (req, res) => {
   try {
-    const sig = req.headers['stripe-signature'];
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  try {
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object;
-        const { subscriptionId, plan } = session.metadata;
-        const subId = session.subscription;
-        const planKey = plan || 'pro';
-        const limits = PLANS[planKey];
-        await prisma.subscription.update({
-          where: { id: subscriptionId },
-          data: {
-            plan: planKey,
-            status: 'active',
-            stripeSubscriptionId: subId,
-            studentLimit: limits.studentLimit,
-            staffLimit: limits.staffLimit,
-            currentPeriodStart: new Date(session.created * 1000),
-            currentPeriodEnd: new Date((session.created + 2592000) * 1000),
-          },
-        });
-        break;
-      }
-      case 'customer.subscription.updated': {
-        const subEvent = event.data.object;
-        const existing = await prisma.subscription.findFirst({ where: { stripeSubscriptionId: subEvent.id } });
-        if (existing) {
-          await prisma.subscription.update({
-            where: { id: existing.id },
-            data: {
-              status: subEvent.status === 'active' ? 'active' : subEvent.status === 'past_due' ? 'past_due' : 'canceled',
-              currentPeriodStart: new Date(subEvent.current_period_start * 1000),
-              currentPeriodEnd: new Date(subEvent.current_period_end * 1000),
-            },
-          });
-        }
-        break;
-      }
-      case 'customer.subscription.deleted': {
-        const subDel = event.data.object;
-        const existingDel = await prisma.subscription.findFirst({ where: { stripeSubscriptionId: subDel.id } });
-        if (existingDel) {
-          await prisma.subscription.update({
-            where: { id: existingDel.id },
-            data: { plan: 'free', status: 'canceled', studentLimit: PLANS.free.studentLimit, staffLimit: PLANS.free.staffLimit, stripeSubscriptionId: null },
-          });
-        }
-        break;
+    const { ClientReference, Status, Amount } = req.body;
+    if (!ClientReference) return res.status(400).json({ error: 'Missing ClientReference' });
+    if (Status !== 'Success') return res.json({ message: 'Payment not successful' });
+    const sub = await prisma.subscription.findFirst({ where: { pendingCheckoutRef: ClientReference } });
+    if (!sub || !sub.pendingPlan) return res.status(404).json({ error: 'No pending subscription found' });
+    const limits = PLANS[sub.pendingPlan];
+    if (!limits) return res.status(400).json({ error: 'Invalid plan' });
+    await prisma.subscription.update({
+      where: { id: sub.id },
+      data: {
+        plan: sub.pendingPlan,
+        status: 'active',
+        studentLimit: limits.studentLimit,
+        staffLimit: limits.staffLimit,
+        pendingPlan: null,
+        pendingCheckoutRef: null,
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    });
+    if (sub.schoolId) {
+      const school = await prisma.school.findUnique({ where: { id: sub.schoolId } });
+      if (school) {
+        res.json({ message: `Subscription upgraded to ${sub.pendingPlan}` });
       }
     }
-    res.json({ received: true });
+    res.json({ message: 'Webhook processed' });
   } catch (err) {
-    console.error('Webhook handler error:', err);
-    res.status(500).json({ error: 'Webhook handler failed' });
+    console.error(err);
+    res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
 
 router.post('/cancel', authenticate, requireRole('headteacher', 'admin'), async (req, res) => {
   try {
-    const sub = await prisma.subscription.findFirst({ orderBy: { createdAt: 'desc' } });
-    if (!sub || !sub.stripeSubscriptionId) {
-      return res.status(400).json({ error: 'No active subscription to cancel' });
-    }
-    const stripe = getOrCreateStripe();
-    if (stripe) {
-      await stripe.subscriptions.cancel(sub.stripeSubscriptionId);
-    }
+    const sub = await prisma.subscription.findUnique({ where: { schoolId: req.schoolId } });
+    if (!sub) return res.status(400).json({ error: 'No subscription found' });
     await prisma.subscription.update({
       where: { id: sub.id },
-      data: { plan: 'free', status: 'canceled', studentLimit: PLANS.free.studentLimit, staffLimit: PLANS.free.staffLimit, stripeSubscriptionId: null },
+      data: { plan: 'free', status: 'canceled', studentLimit: PLANS.free.studentLimit, staffLimit: PLANS.free.staffLimit, pendingPlan: null, pendingCheckoutRef: null },
     });
+    if (req.user.phone) {
+      sendSubscriptionAlert(req.user.phone, 'Free', 'canceled').catch(() => {});
+    }
     res.json({ message: 'Subscription canceled' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to cancel subscription' });
-  }
-});
-
-router.post('/create-portal-session', authenticate, requireRole('headteacher', 'admin'), async (req, res) => {
-  try {
-    const sub = await prisma.subscription.findFirst({ orderBy: { createdAt: 'desc' } });
-    if (!sub || !sub.stripeCustomerId) return res.status(400).json({ error: 'No Stripe customer' });
-    const stripe = getOrCreateStripe();
-    if (!stripe) return res.status(400).json({ error: 'Stripe not configured' });
-    const session = await stripe.billingPortal.sessions.create({
-      customer: sub.stripeCustomerId,
-      return_url: `${req.headers.origin || 'http://localhost:3000'}/settings`,
-    });
-    res.json({ url: session.url });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to create portal session' });
   }
 });
 

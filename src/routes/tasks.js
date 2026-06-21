@@ -7,6 +7,7 @@ router.use(authenticate);
 
 router.get('/', async (req, res) => {
   const tasks = await prisma.task.findMany({
+    where: { schoolId: req.schoolId },
     include: { comments: { orderBy: { createdAt: 'asc' } } },
     orderBy: { createdAt: 'desc' },
   });
@@ -15,7 +16,7 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const data = { ...req.body, assignedBy: req.user.id };
+    const data = { ...req.body, assignedBy: req.user.id, schoolId: req.schoolId };
     if (data.attachments) data.attachments = JSON.stringify(data.attachments);
     const task = await prisma.task.create({ data, include: { comments: true } });
     res.status(201).json(task);
@@ -48,7 +49,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/comments', async (req, res) => {
   try {
     const comment = await prisma.taskComment.create({
-      data: { taskId: req.params.id, userId: req.user.id, userName: req.user.name, content: req.body.content },
+      data: { taskId: req.params.id, schoolId: req.schoolId, userId: req.user.id, userName: req.user.name, content: req.body.content },
     });
     res.status(201).json(comment);
   } catch (err) {

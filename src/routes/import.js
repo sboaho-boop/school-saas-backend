@@ -13,7 +13,7 @@ router.post('/students', requireRole('headteacher', 'admin'), checkPlanLimit('st
     if (!Array.isArray(records) || records.length === 0) {
       return res.status(400).json({ error: 'records must be a non-empty array' });
     }
-    const classes = await prisma.academicClass.findMany();
+    const classes = await prisma.academicClass.findMany({ where: { schoolId: req.schoolId } });
     const classMap = {};
     classes.forEach((c) => { classMap[c.name] = c.id; });
     const created = [];
@@ -39,6 +39,7 @@ router.post('/students', requireRole('headteacher', 'admin'), checkPlanLimit('st
           parentEmail: r.parentEmail || '',
           enrollmentDate: r.enrollmentDate || new Date().toISOString().split('T')[0],
           status: r.status || 'active',
+          schoolId: req.schoolId,
         };
         const student = await prisma.student.create({ data });
         created.push(student);
@@ -79,6 +80,7 @@ router.post('/staff', requireRole('headteacher', 'admin'), checkPlanLimit('staff
           assignedSubjects: r.assignedSubjects ? JSON.stringify(r.assignedSubjects) : '[]',
           status: r.status || 'active',
           hireDate: r.hireDate || new Date().toISOString().split('T')[0],
+          schoolId: req.schoolId,
         };
         const member = await prisma.staff.create({ data });
         created.push(member);
@@ -99,24 +101,50 @@ router.post('/marks', async (req, res) => {
     if (!Array.isArray(records) || records.length === 0) {
       return res.status(400).json({ error: 'records must be a non-empty array' });
     }
+
+    const COMPONENT_NAMES = ['classExercise', 'homework', 'quiz', 'midterm', 'exam'];
+    const COMPONENT_MAX = { classExercise: 10, homework: 10, quiz: 30, midterm: 20, exam: 30 };
+    function calcTotal(components) {
+      if (!components) return 0;
+      if (typeof components === 'string') components = JSON.parse(components);
+      return COMPONENT_NAMES.reduce((sum, name) => sum + (parseFloat(components[name]) || 0), 0);
+    }
+    function scoreToGrade(total) {
+      if (total >= 80) return 'A';
+      if (total >= 70) return 'B';
+      if (total >= 60) return 'C';
+      if (total >= 50) return 'D';
+      if (total >= 40) return 'E';
+      return 'F';
+    }
+
     const results = [];
     const errors = [];
-    const term = await prisma.term.findFirst({ where: { isActive: true } });
+    const term = await prisma.term.findFirst({ where: { isActive: true, schoolId: req.schoolId } });
     const termId = term ? term.id : '';
     for (let i = 0; i < records.length; i++) {
       try {
         const r = records[i];
-        if (!r.studentId || !r.subjectId || r.score === undefined) {
-          errors.push({ row: i + 1, error: 'Missing required fields (studentId, subjectId, score)' });
-          continue;
+        let components = r.components;
+        let score = r.score;
+        if (components && typeof components === 'object') {
+          const c = {};
+          COMPONENT_NAMES.forEach(n => { c[n] = Math.min(parseFloat(components[n]) || 0, COMPONENT_MAX[n]); });
+          components = JSON.stringify(c);
+          score = calcTotal(components);
+        } else {
+          components = JSON.stringify({});
+          score = parseFloat(score) || 0;
         }
+        const grade = scoreToGrade(score);
         const tid = r.termId || termId;
-        const existing = await prisma.grade.findFirst({ where: { studentId: r.studentId, subjectId: r.subjectId, termId: tid } });
+        const existing = await prisma.grade.findFirst({ where: { studentId: r.studentId, subjectId: r.subjectId, termId: tid, schoolId: req.schoolId } });
+        const data = { score, grade, components, remarks: r.remarks || '', classId: r.classId || '' };
         if (existing) {
-          const updated = await prisma.grade.update({ where: { id: existing.id }, data: { score: r.score, grade: r.grade || '', remarks: r.remarks || '' } });
+          const updated = await prisma.grade.update({ where: { id: existing.id }, data });
           results.push(updated);
         } else {
-          const created = await prisma.grade.create({ data: { studentId: r.studentId, subjectId: r.subjectId, classId: r.classId || '', termId: tid, score: r.score, grade: r.grade || '', remarks: r.remarks || '' } });
+          const created = await prisma.grade.create({ data: { ...data, studentId: r.studentId, subjectId: r.subjectId, termId: tid, schoolId: req.schoolId } });
           results.push(created);
         }
       } catch (err) {
