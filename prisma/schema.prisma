@@ -46,6 +46,8 @@ model School {
   cardOrders     CardOrder[]
   studentReports StudentReport[]
   privacyConsents PrivacyConsent[]
+  assignments     Assignment[]
+  submissions     Submission[]
 }
 
 model User {
@@ -133,6 +135,7 @@ model Student {
   grades          Grade[]
   wallet          StudentWallet?
   reports         StudentReport[]
+  submissions     Submission[]
 
   @@unique([schoolId, email])
 }
@@ -465,6 +468,44 @@ model StudentReport {
 
   student Student @relation(fields: [studentId], references: [id])
   school  School  @relation(fields: [schoolId], references: [id])
+}
+
+model Assignment {
+  id          String   @id @default(cuid())
+  schoolId    String
+  classId     String
+  subjectId   String?
+  title       String
+  description String
+  dueDate     String
+  totalPoints Float    @default(100)
+  fileUrl     String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  school      School       @relation(fields: [schoolId], references: [id])
+  submissions Submission[]
+}
+
+model Submission {
+  id           String   @id @default(cuid())
+  schoolId     String
+  assignmentId String
+  studentId    String
+  content      String   @default("")
+  fileUrl      String?
+  status       String   @default("submitted")
+  grade        Float?
+  feedback     String?
+  gradedBy     String?
+  gradedAt     DateTime?
+  submittedAt  DateTime @default(now())
+
+  school     School     @relation(fields: [schoolId], references: [id])
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+  student    Student    @relation(fields: [studentId], references: [id])
+
+  @@unique([assignmentId, studentId])
 }
 
 model PrivacyConsent {

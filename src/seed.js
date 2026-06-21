@@ -69,7 +69,7 @@ async function main() {
 
   // Clear all existing data for clean reseed (order matters for FK constraints)
   await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
-  const tables = ['StaffAttendance','PrivacyConsent','StudentReport','CardOrder','Transaction','StudentWallet','Grade','Attendance','FeeRecord','Notification','Message','Announcement','TaskComment','Task','Subject','Term','AcademicClass','Campus','Staff','User','Student','TransportRoute','AuditLog','PushSubscription'];
+  const tables = ['Submission','Assignment','StaffAttendance','PrivacyConsent','StudentReport','CardOrder','Transaction','StudentWallet','Grade','Attendance','FeeRecord','Notification','Message','Announcement','TaskComment','Task','Subject','Term','AcademicClass','Campus','Staff','User','Student','TransportRoute','AuditLog','PushSubscription'];
   for (const t of tables) {
     await prisma[t].deleteMany({});
   }

@@ -116,4 +116,21 @@ router.post('/set-password', authenticate, async (req, res) => {
   }
 });
 
+router.get('/assignments', authenticateStudent, async (req, res) => {
+  try {
+    const student = await prisma.student.findUnique({ where: { id: req.studentId }, select: { classId: true } });
+    if (!student) return res.status(404).json({ error: 'Student not found' });
+    const assignments = await prisma.assignment.findMany({
+      where: { schoolId: req.schoolId, classId: student.classId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        submissions: { where: { studentId: req.studentId }, select: { id: true, status: true, grade: true, feedback: true, content: true, submittedAt: true } },
+      },
+    });
+    res.json(assignments);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 module.exports = router;

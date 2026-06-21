@@ -26,6 +26,8 @@ const pushRoutes = require('./routes/push');
 const notificationRoutes = require('./routes/notifications');
 const studentPortalRoutes = require('./routes/student');
 const privacyRoutes = require('./routes/privacy');
+const assignmentRoutes = require('./routes/assignments');
+const submissionRoutes = require('./routes/submissions');
 const superRoutes = require('./routes/super');
 
 const app = express();
@@ -71,6 +73,8 @@ app.use('/api/push', pushRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/student', studentPortalRoutes);
 app.use('/api/privacy', privacyRoutes);
+app.use('/api/assignments', assignmentRoutes);
+app.use('/api/submissions', submissionRoutes);
 app.use('/api/super', superRoutes);
 
 app.get('/api/audit-logs', require('./middleware/auth').authenticate, require('./middleware/auth').requireRole('headteacher', 'admin'), async (req, res) => {
