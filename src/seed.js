@@ -160,6 +160,8 @@ async function main() {
       if (i < 2) {
         data.parentPassword = demoHash;
         data.password = demoHash;
+        const slug = code === 'SCH-001' ? 'school' : code === 'SCH-002' ? 'riverside' : code === 'SCH-003' ? 'gracehill' : code === 'SCH-004' ? 'stmarys' : 'sunrise';
+        data.parentEmail = `demo${i + 1}@${slug}.com`;
       }
       const student = await prisma.student.create({ data });
       studentIds.push(student.id);
@@ -292,6 +294,18 @@ async function main() {
   console.log('School 3:', s3.schoolName, '(ID:', s3.schoolId, ')  — headteacher@gracehill.com');
   console.log('School 4:', s4.schoolName, '(ID:', s4.schoolId, ')  — headteacher@stmarys.com');
   console.log('School 5:', s5.schoolName, '(ID:', s5.schoolId, ')  — headteacher@sunrise.com');
+  console.log('\nStudent demo logins (password: demo123):');
+  console.log('  demo1@school.com    — Demo International School');
+  console.log('  demo2@school.com    — Demo International School');
+  console.log('  demo1@riverside.com  — Riverside Academy');
+  console.log('  demo2@riverside.com  — Riverside Academy');
+  console.log('  demo1@gracehill.com  — Gracehill Academy');
+  console.log('  demo2@gracehill.com  — Gracehill Academy');
+  console.log('  demo1@stmarys.com    — St. Mary\'s International');
+  console.log('  demo2@stmarys.com    — St. Mary\'s International');
+  console.log('  demo1@sunrise.com    — Sunrise Preparatory');
+  console.log('  demo2@sunrise.com    — Sunrise Preparatory');
+  console.log('\n(Use these emails at /parent/login or /student/login with password demo123)');
   console.log('Demo accounts (password: password123):');
   console.log('  headteacher, admin, accountant, teacher1, teacher2, nont @ each school\'s domain');
   console.log('\nStudent demo login (password: demo123):');
