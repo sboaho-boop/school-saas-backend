@@ -28,6 +28,9 @@ const studentPortalRoutes = require('./routes/student');
 const privacyRoutes = require('./routes/privacy');
 const assignmentRoutes = require('./routes/assignments');
 const submissionRoutes = require('./routes/submissions');
+const timetableRoutes = require('./routes/timetable');
+const uploadRoutes = require('./routes/upload');
+const walletWebhookRoutes = require('./routes/wallet-webhook');
 const superRoutes = require('./routes/super');
 
 const app = express();
@@ -75,7 +78,15 @@ app.use('/api/student', studentPortalRoutes);
 app.use('/api/privacy', privacyRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/submissions', submissionRoutes);
+app.use('/api/timetable', timetableRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/wallet', walletWebhookRoutes);
 app.use('/api/super', superRoutes);
+
+const path = require('path');
+const fs = require('fs');
+const uploadDir = process.env.UPLOAD_DIR || (process.env.RAILWAY_VOLUME_MOUNT ? path.join(process.env.RAILWAY_VOLUME_MOUNT, 'uploads') : path.join(__dirname, '..', 'uploads'));
+if (fs.existsSync(uploadDir)) app.use('/uploads', express.static(uploadDir));
 
 app.get('/api/audit-logs', require('./middleware/auth').authenticate, require('./middleware/auth').requireRole('headteacher', 'admin'), async (req, res) => {
   try {

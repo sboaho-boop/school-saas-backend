@@ -133,4 +133,18 @@ router.get('/assignments', authenticateStudent, async (req, res) => {
   }
 });
 
+router.get('/timetable', authenticateStudent, async (req, res) => {
+  try {
+    const student = await prisma.student.findUnique({ where: { id: req.studentId }, select: { classId: true } });
+    if (!student) return res.status(404).json({ error: 'Student not found' });
+    const slots = await prisma.timetableSlot.findMany({
+      where: { schoolId: req.schoolId, classId: student.classId },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+    res.json(slots);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 module.exports = router;

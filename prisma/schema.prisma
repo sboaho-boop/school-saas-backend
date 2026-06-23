@@ -48,6 +48,7 @@ model School {
   privacyConsents PrivacyConsent[]
   assignments     Assignment[]
   submissions     Submission[]
+  timetableSlots  TimetableSlot[]
 }
 
 model User {
@@ -389,6 +390,8 @@ model StudentWallet {
   todaySpent      Float    @default(0)
   lastSpentReset  String   @default("")
   frozen          Boolean  @default(false)
+  pendingTopupRef String?
+  pendingTopupAmount Float?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -468,6 +471,20 @@ model StudentReport {
 
   student Student @relation(fields: [studentId], references: [id])
   school  School  @relation(fields: [schoolId], references: [id])
+}
+
+model TimetableSlot {
+  id        String  @id @default(cuid())
+  schoolId  String
+  classId   String
+  dayOfWeek Int
+  startTime String
+  endTime   String
+  subjectId String?
+  staffId   String?
+  room      String  @default("")
+
+  school School @relation(fields: [schoolId], references: [id])
 }
 
 model Assignment {

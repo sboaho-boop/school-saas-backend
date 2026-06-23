@@ -69,7 +69,7 @@ async function main() {
 
   // Clear all existing data for clean reseed (order matters for FK constraints)
   await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
-  const tables = ['Submission','Assignment','StaffAttendance','PrivacyConsent','StudentReport','CardOrder','Transaction','StudentWallet','Grade','Attendance','FeeRecord','Notification','Message','Announcement','TaskComment','Task','Subject','Term','AcademicClass','Campus','Staff','User','Student','TransportRoute','AuditLog','PushSubscription'];
+  const tables = ['Submission','Assignment','TimetableSlot','StaffAttendance','PrivacyConsent','StudentReport','CardOrder','Transaction','StudentWallet','Grade','Attendance','FeeRecord','Notification','Message','Announcement','TaskComment','Task','Subject','Term','AcademicClass','Campus','Staff','User','Student','TransportRoute','AuditLog','PushSubscription'];
   for (const t of tables) {
     await prisma[t].deleteMany({});
   }
@@ -131,6 +131,19 @@ async function main() {
     ]);
 
     const activeTerm = await prisma.term.findFirst({ where: { schoolId, isActive: true } });
+
+    // Assignments
+    const assignmentDefs = [
+      { title: 'Mathematics Homework 1', description: 'Solve problems 1-20 from Chapter 5', dueDate: '2026-06-28', totalPoints: 20 },
+      { title: 'English Essay', description: 'Write a 500-word essay on your role model', dueDate: '2026-07-05', totalPoints: 30 },
+      { title: 'Science Project', description: 'Create a model of the solar system', dueDate: '2026-07-12', totalPoints: 25 },
+    ];
+    const assignmentClasses = createdClasses.slice(0, 3);
+    for (const cls of assignmentClasses) {
+      for (const def of assignmentDefs) {
+        await prisma.assignment.create({ data: { ...def, classId: cls.id, schoolId, createdBy: users[3].id } });
+      }
+    }
 
     // Generate students
     const demoHash = await bcrypt.hash('demo123', 10);
@@ -269,6 +282,39 @@ async function main() {
       prisma.message.create({ data: { subject: 'Staff Meeting', body: 'All staff meeting Friday at 8:00 AM.', fromId: users[0].id, toId: users[1].id, read: false, schoolId } }),
       prisma.message.create({ data: { subject: 'Budget Approval', body: 'Please review Q3 budget.', fromId: users[2].id, toId: users[0].id, read: false, schoolId } }),
     ]);
+
+    // Timetable slots
+    const days = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+    const periods = [
+      { start:'08:00', end:'08:45' }, { start:'08:45', end:'09:30' },
+      { start:'09:45', end:'10:30' }, { start:'10:30', end:'11:15' },
+      { start:'11:30', end:'12:15' }, { start:'12:15', end:'13:00' },
+      { start:'14:00', end:'14:45' }, { start:'14:45', end:'15:30' },
+    ];
+    let slotCount = 0;
+    for (const cls of createdClasses.slice(0, 6)) {
+      for (let d = 0; d < 5; d++) {
+        for (let p = 0; p < 4; p++) {
+          const subj = allSubjects.filter(s => s.classId === cls.id);
+          const tStaff = staffMembers.filter(s => s.staffType === 'teaching');
+          try {
+            await prisma.timetableSlot.create({
+              data: {
+                schoolId,
+                classId: cls.id,
+                dayOfWeek: d,
+                startTime: periods[p].start,
+                endTime: periods[p].end,
+                subjectId: subj[p % subj.length]?.id || undefined,
+                staffId: users.filter((_, i) => [3,4][p % 2])[0]?.id || undefined,
+                room: `Room ${100 + p}`,
+              },
+            });
+            slotCount++;
+          } catch {}
+        }
+      }
+    }
 
     return { schoolId, schoolName: name, userSuffix };
   }

@@ -12,7 +12,7 @@ function getAuthHeader() {
   return `Basic ${auth}`;
 }
 
-function createCheckout({ amount, title, description, clientReference, payeeName, payeeEmail, payeeMobileNumber }) {
+function createCheckout({ amount, title, description, clientReference, payeeName, payeeEmail, payeeMobileNumber, callbackUrl, returnUrl, cancellationUrl }) {
   return new Promise((resolve, reject) => {
     if (!HUBTEL_CLIENT_ID || !HUBTEL_CLIENT_SECRET || !HUBTEL_MERCHANT_ACCOUNT) {
       return reject(new Error('Hubtel payment not configured. Set HUBTEL_CLIENT_ID, HUBTEL_CLIENT_SECRET, and HUBTEL_MERCHANT_ACCOUNT.'));
@@ -22,10 +22,10 @@ function createCheckout({ amount, title, description, clientReference, payeeName
       merchantAccountNumber: HUBTEL_MERCHANT_ACCOUNT,
       totalAmount: amount,
       title,
-      description: description || 'Payment for EduPlatform subscription',
-      callbackUrl: `${BASE_URL}/api/billing/hubtel-webhook`,
-      returnUrl: `${FRONTEND_URL}/settings?billing=success`,
-      cancellationUrl: `${FRONTEND_URL}/settings?billing=cancelled`,
+      description: description || 'Payment for EduPlatform',
+      callbackUrl: callbackUrl || `${BASE_URL}/api/billing/hubtel-webhook`,
+      returnUrl: returnUrl || `${FRONTEND_URL}/settings?billing=success`,
+      cancellationUrl: cancellationUrl || `${FRONTEND_URL}/settings?billing=cancelled`,
       payeeName: payeeName || '',
       payeeEmail: payeeEmail || '',
       payeeMobileNumber: payeeMobileNumber || '',

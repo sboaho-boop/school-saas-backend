@@ -1,7 +1,9 @@
 const { Router } = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const prisma = require('../lib/prisma');
 const { signToken, verifyToken } = require('../lib/jwt');
+const { createCheckout } = require('../lib/hubtel-payment');
 
 const router = Router();
 
@@ -78,19 +80,33 @@ router.get('/children/:id', authenticateParent, async (req, res) => {
   res.json(student);
 });
 
-router.post('/wallet/top-up', authenticateParent, async (req, res) => {
+router.post('/wallet/initiate-topup', authenticateParent, async (req, res) => {
   try {
-    const { studentId, amount } = req.body;
+    const { studentId, amount, method } = req.body;
     if (!studentId || !amount || amount <= 0) return res.status(400).json({ error: 'Invalid request' });
+    if (amount < 1) return res.status(400).json({ error: 'Minimum top-up is GHS 1' });
+    if (amount > 5000) return res.status(400).json({ error: 'Maximum top-up is GHS 5,000' });
     const student = await prisma.student.findFirst({ where: { id: studentId, parentEmail: req.parentEmail, schoolId: req.schoolId } });
     if (!student) return res.status(403).json({ error: 'Not your child' });
-    let wallet = await prisma.studentWallet.findUnique({ where: { studentId } });
-    if (!wallet) {
-      wallet = await prisma.studentWallet.create({ data: { studentId, studentName: `${student.firstName} ${student.lastName}`, schoolId: req.schoolId } });
-    }
-    const updated = await prisma.studentWallet.update({ where: { studentId }, data: { balance: { increment: amount } } });
-    await prisma.transaction.create({ data: { walletId: wallet.id, type: 'topup', amount, balanceAfter: updated.balance, method: 'mobile_money', service: 'wallet_topup', schoolId: req.schoolId } });
-    res.json({ balance: updated.balance, message: `GHS ${amount} added successfully` });
+    const reference = `WALLET-${studentId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    const amountPesewas = Math.round(amount * 100);
+    const checkout = await createCheckout({
+      amount: amountPesewas,
+      title: `Wallet Top-Up — GHS ${amount}`,
+      description: `Top up wallet for ${student.firstName} ${student.lastName}`,
+      clientReference: reference,
+      payeeName: req.parentEmail,
+      payeeEmail: req.parentEmail,
+      callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/wallet/hubtel-webhook`,
+      returnUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/parent/dashboard?topup=success&ref=${reference}`,
+      cancellationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/parent/dashboard?topup=cancelled`,
+    });
+    await prisma.studentWallet.upsert({
+      where: { studentId },
+      update: { pendingTopupRef: reference, pendingTopupAmount: amount },
+      create: { studentId, studentName: `${student.firstName} ${student.lastName}`, schoolId: req.schoolId, pendingTopupRef: reference, pendingTopupAmount: amount },
+    });
+    res.json({ checkoutUrl: checkout.checkoutUrl, reference });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
