@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -12,7 +12,29 @@ model SuperAdmin {
   email     String   @unique
   password  String
   name      String
+  role      String   @default("co-admin")
   createdAt DateTime @default(now())
+
+  feedbacks Feedback[]
+}
+
+model Feedback {
+  id         String   @id @default(cuid())
+  schoolId   String
+  userId     String
+  userName   String
+  userEmail  String
+  schoolName String
+  subject    String
+  message    String
+  status     String   @default("open")
+  repliedAt  DateTime?
+  reply      String?
+  createdAt  DateTime @default(now())
+
+  school      School      @relation(fields: [schoolId], references: [id])
+  assignedTo  SuperAdmin? @relation(fields: [assignedToId], references: [id])
+  assignedToId String?
 }
 
 model School {
@@ -49,6 +71,25 @@ model School {
   assignments     Assignment[]
   submissions     Submission[]
   timetableSlots  TimetableSlot[]
+  exams           Exam[]
+  questions       Question[]
+  examSubmissions ExamSubmission[]
+  incidents       Incident[]
+  books           Book[]
+  bookLoans       BookLoan[]
+  hostels         Hostel[]
+  rooms           Room[]
+  bedAllocations  BedAllocation[]
+  conferenceSlots ConferenceSlot[]
+  conferenceBookings ConferenceBooking[]
+  campaigns       Campaign[]
+  lessonPlans     LessonPlan[]
+  inventoryItems  InventoryItem[]
+  inventoryAssignments InventoryAssignment[]
+  alumni          Alumni[]
+  driverTrips     DriverTrip[]
+  calendarEvents  CalendarEvent[]
+  feedbacks       Feedback[]
 }
 
 model User {
@@ -77,6 +118,7 @@ model User {
   messagesRecv   Message[]       @relation("ToUser")
   announcements  Announcement[]
   notifications  Notification[]
+  conferenceSlots ConferenceSlot[]
 
   @@unique([schoolId, email])
 }
@@ -113,6 +155,7 @@ model PasswordResetToken {
 model Student {
   id             String   @id @default(cuid())
   schoolId       String
+  indexNumber    String?
   firstName      String
   lastName       String
   email          String
@@ -137,13 +180,20 @@ model Student {
   wallet          StudentWallet?
   reports         StudentReport[]
   submissions     Submission[]
+  examSubmissions ExamSubmission[]
+  incidents       Incident[]
+  bedAllocations  BedAllocation[]
+  conferenceBookings ConferenceBooking[]
+  alumni          Alumni?
 
   @@unique([schoolId, email])
+  @@unique([schoolId, indexNumber])
 }
 
 model Staff {
   id               String   @id @default(cuid())
   schoolId         String
+  indexNumber      String?
   campusId         String?
   name             String
   email            String
@@ -163,12 +213,14 @@ model Staff {
 
   school          School             @relation(fields: [schoolId], references: [id])
   campus          Campus?            @relation(fields: [campusId], references: [id])
-  route           TransportRoute?    @relation(fields: [assignedRouteId], references: [id])
+  assignedRoutes  TransportRoute[]   @relation("RouteDrivers")
+  driverTrips     DriverTrip[]
   attendanceRecs  StaffAttendance[]
 
   @@unique([schoolId, email])
   @@unique([schoolId, cardUid])
   @@unique([schoolId, wristbandUid])
+  @@unique([schoolId, indexNumber])
 }
 
 model FeeRecord {
@@ -198,8 +250,29 @@ model TransportRoute {
   status      String   @default("active")
   createdAt   DateTime @default(now())
 
-  school  School @relation(fields: [schoolId], references: [id])
-  drivers Staff[]
+  school  School     @relation(fields: [schoolId], references: [id])
+  drivers Staff[]    @relation("RouteDrivers")
+  trips   DriverTrip[]
+}
+
+model DriverTrip {
+  id            String   @id @default(cuid())
+  schoolId      String
+  routeId       String
+  staffId       String
+  status        String   @default("checked_in")
+  checkInTime   DateTime @default(now())
+  departureTime DateTime?
+  arrivalTime   DateTime?
+  completedAt   DateTime?
+  date          String
+  notes         String   @default("")
+
+  school School         @relation(fields: [schoolId], references: [id])
+  route  TransportRoute @relation(fields: [routeId], references: [id])
+  driver Staff          @relation(fields: [staffId], references: [id])
+
+  @@unique([schoolId, staffId, date])
 }
 
 model Task {
@@ -470,7 +543,284 @@ model StudentReport {
   createdAt DateTime @default(now())
 
   student Student @relation(fields: [studentId], references: [id])
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+// === NEW FEATURES ===
+
+model Exam {
+  id          String   @id @default(cuid())
+  schoolId    String
+  classId     String
+  subjectId   String
+  title       String
+  description String   @default("")
+  duration    Int
+  totalPoints Float    @default(0)
+  passScore   Float    @default(0)
+  dueDate     String
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  school      School           @relation(fields: [schoolId], references: [id])
+  questions   Question[]
+  submissions ExamSubmission[]
+}
+
+model Question {
+  id            String  @id @default(cuid())
+  examId        String
+  schoolId      String
+  type          String  @default("mcq")
+  questionText  String
+  options       String  @default("[]")
+  correctAnswer String  @default("")
+  points        Float   @default(1)
+
+  school School @relation(fields: [schoolId], references: [id])
+  exam   Exam   @relation(fields: [examId], references: [id])
+}
+
+model ExamSubmission {
+  id          String   @id @default(cuid())
+  examId      String
+  studentId   String
+  schoolId    String
+  answers     String   @default("{}")
+  score       Float?
+  grade       String   @default("")
+  graded      Boolean  @default(false)
+  feedback    String   @default("")
+  submittedAt DateTime @default(now())
+
   school  School  @relation(fields: [schoolId], references: [id])
+  exam    Exam    @relation(fields: [examId], references: [id])
+  student Student @relation(fields: [studentId], references: [id])
+
+  @@unique([examId, studentId])
+}
+
+model Incident {
+  id          String   @id @default(cuid())
+  schoolId    String
+  studentId   String
+  reportedBy  String
+  type        String
+  description String
+  location    String   @default("")
+  date        String
+  action      String   @default("warning")
+  status      String   @default("open")
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  createdAt   DateTime @default(now())
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id])
+}
+
+model Book {
+  id               String   @id @default(cuid())
+  schoolId         String
+  title            String
+  author           String
+  isbn             String   @default("")
+  publisher        String   @default("")
+  category         String   @default("")
+  quantity         Int      @default(1)
+  availableQuantity Int     @default(1)
+  shelfLocation    String   @default("")
+  createdAt        DateTime @default(now())
+
+  school  School     @relation(fields: [schoolId], references: [id])
+  loans   BookLoan[]
+}
+
+model BookLoan {
+  id           String    @id @default(cuid())
+  schoolId     String
+  bookId       String
+  borrowedBy   String
+  borrowedType String    @default("student")
+  borrowedDate String
+  dueDate      String
+  returnedDate String?
+  status       String    @default("active")
+  fine         Float     @default(0)
+
+  school School @relation(fields: [schoolId], references: [id])
+  book   Book   @relation(fields: [bookId], references: [id])
+}
+
+model Hostel {
+  id       String @id @default(cuid())
+  schoolId String
+  name     String
+  gender   String @default("mixed")
+  warden   String @default("")
+  capacity Int    @default(0)
+
+  school School @relation(fields: [schoolId], references: [id])
+  rooms  Room[]
+}
+
+model Room {
+  id        String @id @default(cuid())
+  hostelId  String
+  schoolId  String
+  roomNumber String
+  capacity  Int    @default(0)
+  gender    String @default("mixed")
+
+  school       School          @relation(fields: [schoolId], references: [id])
+  hostel       Hostel          @relation(fields: [hostelId], references: [id])
+  allocations  BedAllocation[]
+}
+
+model BedAllocation {
+  id        String   @id @default(cuid())
+  roomId    String
+  studentId String
+  schoolId  String
+  bedNumber String   @default("")
+  startDate String
+  endDate   String?
+  status    String   @default("active")
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  room    Room    @relation(fields: [roomId], references: [id])
+  student Student @relation(fields: [studentId], references: [id])
+}
+
+model ConferenceSlot {
+  id         String @id @default(cuid())
+  schoolId   String
+  teacherId  String
+  date       String
+  startTime  String
+  endTime    String
+  maxParents Int    @default(5)
+  bookedCount Int   @default(0)
+
+  school   School             @relation(fields: [schoolId], references: [id])
+  teacher  User               @relation(fields: [teacherId], references: [id])
+  bookings ConferenceBooking[]
+}
+
+model ConferenceBooking {
+  id          String   @id @default(cuid())
+  slotId      String
+  studentId   String
+  schoolId    String
+  parentEmail String
+  notes       String   @default("")
+  status      String   @default("booked")
+  createdAt   DateTime @default(now())
+
+  school School           @relation(fields: [schoolId], references: [id])
+  slot   ConferenceSlot   @relation(fields: [slotId], references: [id])
+  student Student         @relation(fields: [studentId], references: [id])
+}
+
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  schoolId    String
+  title       String
+  description String   @default("")
+  date        String
+  endDate     String?
+  time        String?
+  endTime     String?
+  type        String   @default("event")
+  color       String   @default("#3b82f6")
+  allDay      Boolean  @default(false)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+model Campaign {
+  id            String   @id @default(cuid())
+  schoolId      String
+  title         String
+  message       String
+  type          String   @default("sms")
+  recipientType String   @default("all_parents")
+  recipientFilter String @default("{}")
+  sentCount     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+model LessonPlan {
+  id          String   @id @default(cuid())
+  schoolId    String
+  classId     String
+  subjectId   String
+  teacherId   String
+  week        String
+  topic       String
+  objectives  String
+  materials   String   @default("")
+  activities  String   @default("")
+  assessment  String   @default("")
+  status      String   @default("draft")
+  approvedBy  String?
+  approvedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+model InventoryItem {
+  id            String   @id @default(cuid())
+  schoolId      String
+  name          String
+  category      String   @default("")
+  quantity      Int      @default(0)
+  condition     String   @default("good")
+  location      String   @default("")
+  purchaseDate  String?
+  purchasePrice Float    @default(0)
+  status        String   @default("available")
+  createdAt     DateTime @default(now())
+
+  school       School                @relation(fields: [schoolId], references: [id])
+  assignments  InventoryAssignment[]
+}
+
+model InventoryAssignment {
+  id           String   @id @default(cuid())
+  itemId       String
+  schoolId     String
+  assignedTo   String
+  assignedType String   @default("staff")
+  assignedById String
+  assignedDate String
+  returnDate   String?
+  notes        String   @default("")
+
+  school School         @relation(fields: [schoolId], references: [id])
+  item   InventoryItem  @relation(fields: [itemId], references: [id])
+}
+
+model Alumni {
+  id               String   @id @default(cuid())
+  schoolId         String
+  studentId        String   @unique
+  graduationYear   String
+  currentOccupation String  @default("")
+  phone            String   @default("")
+  email            String   @default("")
+  address          String   @default("")
+  socialLinks      String   @default("{}")
+  createdAt        DateTime @default(now())
+
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id])
 }
 
 model TimetableSlot {
@@ -526,14 +876,16 @@ model Submission {
 }
 
 model PrivacyConsent {
-  id        String   @id @default(cuid())
-  userId    String
-  schoolId  String
-  type      String   @default("privacy_policy")
-  version   String   @default("1.0")
-  ip        String   @default("")
-  userAgent String   @default("")
-  createdAt DateTime @default(now())
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+model AIConversation {
+  id          String   @id @default(cuid())
+  schoolId    String
+  userId      String
+  userMessage String
+  aiResponse  String
+  createdAt   DateTime @default(now())
 
   school School @relation(fields: [schoolId], references: [id])
 }

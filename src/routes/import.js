@@ -3,6 +3,7 @@ const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../middleware/audit');
 const { checkPlanLimit } = require('../middleware/planLimit');
+const { generateStudentIndexNumber, generateStaffIndexNumber } = require('../lib/index-number');
 
 const router = Router();
 router.use(authenticate);
@@ -26,7 +27,9 @@ router.post('/students', requireRole('headteacher', 'admin'), checkPlanLimit('st
           continue;
         }
         const classId = classMap[r.className] || '';
+        const indexNumber = await generateStudentIndexNumber(req.schoolId);
         const data = {
+          indexNumber,
           firstName: r.firstName,
           lastName: r.lastName,
           email: r.email,
@@ -69,7 +72,9 @@ router.post('/staff', requireRole('headteacher', 'admin'), checkPlanLimit('staff
           errors.push({ row: i + 1, error: 'Missing required fields (name, email)' });
           continue;
         }
+        const indexNumber = await generateStaffIndexNumber(req.schoolId);
         const data = {
+          indexNumber,
           name: r.name,
           email: r.email,
           phone: r.phone || '',

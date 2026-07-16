@@ -2,6 +2,7 @@ const { Router } = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
+const { sendOtpEmail } = require('../lib/email');
 
 const router = Router();
 
@@ -24,8 +25,20 @@ function requireSuper(req, res, next) {
   }
 }
 
-function generateSchoolCode(index) {
-  return `SCH-${String(index).padStart(3, '0')}`;
+async function loadSuperAdmin(req, res, next) {
+  try {
+    const admin = await prisma.superAdmin.findUnique({ where: { id: req.superAdminId } });
+    if (!admin) return res.status(404).json({ error: 'Admin not found' });
+    req.superAdmin = admin;
+    next();
+  } catch { res.status(500).json({ error: 'Server error' }); }
+}
+
+function generateSchoolCode() {
+  const chars = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let code = 'SCH-';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
 }
 
 router.post('/login', async (req, res) => {
@@ -88,21 +101,36 @@ router.post('/schools', requireSuper, async (req, res) => {
     const existingSuper = await prisma.superAdmin.findUnique({ where: { email: adminEmail } });
     if (existing || existingSuper) return res.status(400).json({ error: 'Email already in use' });
 
-    const count = await prisma.school.count();
-    const code = generateSchoolCode(count + 1);
-
-    const school = await prisma.school.create({ data: { code, name } });
+    let school;
+    for (let i = 0; i < 20; i++) {
+      const code = generateSchoolCode();
+      try {
+        school = await prisma.school.create({ data: { code, name } });
+        break;
+      } catch (e) {
+        if (e.code !== 'P2002') throw e;
+      }
+    }
+    if (!school) return res.status(500).json({ error: 'Failed to generate unique school code' });
 
     const hashed = await bcrypt.hash(adminPassword, 10);
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const expiry = new Date(Date.now() + 15 * 60 * 1000);
+
     await prisma.user.create({
-      data: { schoolId: school.id, email: adminEmail, password: hashed, name: adminName || 'School Admin', role: 'headteacher' },
+      data: { schoolId: school.id, email: adminEmail, password: hashed, name: adminName || 'School Admin', role: 'admin', isVerified: false, verificationCode: otp, verificationExpiry: expiry },
     });
 
     await prisma.subscription.create({
       data: { schoolId: school.id, plan: 'free', status: 'active', studentLimit: 100, staffLimit: 10 },
     });
 
-    res.status(201).json({ school, message: `School created. Code: ${code}` });
+    const via = {};
+    const emailRes = await sendOtpEmail(adminEmail, adminName || 'School Admin', otp);
+    if (emailRes.success) via.email = true;
+
+    res.status(201).json({ school, message: `School created. Code: ${code}. Verification code sent to ${adminEmail}.`, verification: { otp, sentVia: via, expiresAt: expiry.toISOString() } });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -335,6 +363,68 @@ router.delete('/schools/:id/campuses/:campusId', requireSuper, async (req, res) 
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// ─── Co-Super Admin Management ───────────────────────────────
+
+router.get('/admins', requireSuper, loadSuperAdmin, async (req, res) => {
+  if (req.superAdmin.role !== 'owner') return res.status(403).json({ error: 'Only the owner can manage admins' });
+  const admins = await prisma.superAdmin.findMany({ select: { id: true, email: true, name: true, role: true, createdAt: true } });
+  res.json(admins);
+});
+
+router.post('/admins', requireSuper, loadSuperAdmin, async (req, res) => {
+  if (req.superAdmin.role !== 'owner') return res.status(403).json({ error: 'Only the owner can add admins' });
+  const { email, password, name } = req.body;
+  if (!email || !password || !name) return res.status(400).json({ error: 'email, password, name required' });
+  const existing = await prisma.superAdmin.findUnique({ where: { email } });
+  if (existing) return res.status(409).json({ error: 'Email already registered' });
+  const hashed = await bcrypt.hash(password, 10);
+  const admin = await prisma.superAdmin.create({ data: { email, password: hashed, name, role: 'co-admin' } });
+  res.status(201).json({ id: admin.id, email: admin.email, name: admin.name, role: admin.role });
+});
+
+router.delete('/admins/:id', requireSuper, loadSuperAdmin, async (req, res) => {
+  if (req.superAdmin.role !== 'owner') return res.status(403).json({ error: 'Only the owner can remove admins' });
+  const admin = await prisma.superAdmin.findUnique({ where: { id: req.params.id } });
+  if (!admin) return res.status(404).json({ error: 'Admin not found' });
+  if (admin.role === 'owner') return res.status(400).json({ error: 'Cannot remove the owner' });
+  await prisma.superAdmin.delete({ where: { id: req.params.id } });
+  res.json({ message: 'Admin removed' });
+});
+
+// ─── Feedback / Reports ──────────────────────────────────────
+
+router.post('/feedback', async (req, res) => {
+  const { schoolId, userId, userName, userEmail, schoolName, subject, message } = req.body;
+  if (!subject || !message) return res.status(400).json({ error: 'subject and message required' });
+  let name = schoolName;
+  if (!name && schoolId) {
+    const school = await prisma.school.findUnique({ where: { id: schoolId }, select: { name: true } });
+    if (school) name = school.name;
+  }
+  const fb = await prisma.feedback.create({ data: { schoolId, userId, userName, userEmail, schoolName: name || '', subject, message } });
+  res.status(201).json(fb);
+});
+
+router.get('/feedback', requireSuper, loadSuperAdmin, async (req, res) => {
+  const status = req.query.status;
+  const where = status ? { status } : {};
+  const feedbacks = await prisma.feedback.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    include: { assignedTo: { select: { id: true, name: true, email: true } } }
+  });
+  res.json(feedbacks);
+});
+
+router.put('/feedback/:id', requireSuper, loadSuperAdmin, async (req, res) => {
+  const { status, reply } = req.body;
+  const data = {};
+  if (status) data.status = status;
+  if (reply) { data.reply = reply; data.repliedAt = new Date(); data.assignedToId = req.superAdmin.id; }
+  const fb = await prisma.feedback.update({ where: { id: req.params.id }, data });
+  res.json(fb);
 });
 
 module.exports = router;

@@ -22,16 +22,15 @@ function authenticateStudent(req, res, next) {
 
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-    const students = await prisma.student.findMany({ where: { parentEmail: email } });
-    if (students.length === 0) return res.status(404).json({ error: 'No students found for this email' });
-    const student = students.find((s) => s.password);
-    if (!student) return res.status(401).json({ error: 'Password not set. Ask your parent to set a password.' });
+    const { indexNumber, password } = req.body;
+    if (!indexNumber || !password) return res.status(400).json({ error: 'Index number and password required' });
+    const student = await prisma.student.findFirst({ where: { indexNumber } });
+    if (!student) return res.status(404).json({ error: 'Student not found with this index number' });
+    if (!student.password) return res.status(401).json({ error: 'Password not set. Ask your parent to set a password from their dashboard.' });
     const match = await bcrypt.compare(password, student.password);
     if (!match) return res.status(401).json({ error: 'Invalid password' });
-    const token = signToken({ id: student.id, email, role: 'student', schoolId: student.schoolId });
-    res.json({ token, students: students.map((s) => ({ id: s.id, name: `${s.firstName} ${s.lastName}`, className: s.className })) });
+    const token = signToken({ id: student.id, indexNumber, role: 'student', schoolId: student.schoolId });
+    res.json({ token, student: { id: student.id, name: `${student.firstName} ${student.lastName}`, className: student.className, indexNumber: student.indexNumber } });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

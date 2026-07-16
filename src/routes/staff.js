@@ -7,6 +7,7 @@ const { checkPlanLimit } = require('../middleware/planLimit');
 const { logAudit } = require('../middleware/audit');
 const { sendSms } = require('../lib/sms');
 const { sendOtpEmail } = require('../lib/email');
+const { generateStaffIndexNumber } = require('../lib/index-number');
 
 const router = Router();
 router.use(authenticate);
@@ -41,7 +42,17 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('staff'), async (req, res) => {
   try {
-    const data = { ...req.body, schoolId: req.schoolId };
+    const creatorRole = req.user.role;
+
+    // Hierarchy: admin can only create headteacher; headteacher creates all other staff
+    if (creatorRole === 'admin' && req.body.staffType !== 'headteacher') {
+      return res.status(403).json({ error: 'Admin can only create the Headteacher. The Headteacher manages all other staff.' });
+    }
+    if (creatorRole === 'headteacher' && req.body.staffType === 'headteacher') {
+      return res.status(403).json({ error: 'Only an Admin can create a Headteacher.' });
+    }
+    const indexNumber = await generateStaffIndexNumber(req.schoolId);
+    const data = { ...req.body, indexNumber, schoolId: req.schoolId };
     if (data.assignedSubjects) data.assignedSubjects = JSON.stringify(data.assignedSubjects);
     const member = await prisma.staff.create({ data });
 
@@ -77,7 +88,7 @@ router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('staff'), a
 
     res.status(201).json(parseStaff({
       ...member,
-      verification: { otp, sentVia: via, expiresAt: expiry.toISOString(), message: !via.email && !via.sms ? 'No email/SMS configured. Share this code with the staff member.' : 'Verification code sent.' },
+      verification: { otp, tempPassword, sentVia: via, expiresAt: expiry.toISOString(), message: !via.email && !via.sms ? 'No email/SMS configured. Share this code with the staff member.' : 'Verification code sent.' },
     }));
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -86,6 +97,15 @@ router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('staff'), a
 
 router.put('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
+    const creatorRole = req.user.role;
+    const target = await prisma.staff.findFirst({ where: { id: req.params.id, schoolId: req.schoolId } });
+    if (!target) return res.status(404).json({ error: 'Staff not found' });
+    if (creatorRole === 'admin' && target.staffType !== 'headteacher') {
+      return res.status(403).json({ error: 'Admin can only manage the Headteacher.' });
+    }
+    if (creatorRole === 'headteacher' && target.staffType === 'headteacher') {
+      return res.status(403).json({ error: 'Only an Admin can manage the Headteacher.' });
+    }
     const data = { ...req.body };
     if (data.assignedSubjects) data.assignedSubjects = JSON.stringify(data.assignedSubjects);
     const member = await prisma.staff.update({ where: { id: req.params.id }, data });
@@ -98,10 +118,17 @@ router.put('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
 
 router.delete('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
-    const member = await prisma.staff.findFirst({ where: { id: req.params.id, schoolId: req.schoolId } });
-    if (!member) return res.status(404).json({ error: 'Not found' });
+    const creatorRole = req.user.role;
+    const target = await prisma.staff.findFirst({ where: { id: req.params.id, schoolId: req.schoolId } });
+    if (!target) return res.status(404).json({ error: 'Staff not found' });
+    if (creatorRole === 'admin' && target.staffType !== 'headteacher') {
+      return res.status(403).json({ error: 'Admin can only manage the Headteacher.' });
+    }
+    if (creatorRole === 'headteacher' && target.staffType === 'headteacher') {
+      return res.status(403).json({ error: 'Only an Admin can manage the Headteacher.' });
+    }
     await prisma.staff.delete({ where: { id: req.params.id } });
-    await logAudit(req, 'delete', 'staff', req.params.id, { name: member.name });
+    await logAudit(req, 'delete', 'staff', req.params.id, { name: target.name });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });

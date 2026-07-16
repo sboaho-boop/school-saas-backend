@@ -8,6 +8,8 @@ const prisma = require('../lib/prisma');
 const { signToken, verifyToken } = require('../lib/jwt');
 const { authenticate } = require('../middleware/auth');
 const { sendRegistrationAlert, sendLoginAlert } = require('../lib/sms');
+const { sendOtpEmail } = require('../lib/email');
+const { sendSms } = require('../lib/sms');
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret';
@@ -25,12 +27,26 @@ router.post('/register', async (req, res) => {
     const existing = await prisma.user.findFirst({ where: { email } });
     if (existing) return res.status(409).json({ error: 'Email already in use' });
 
-    const schoolCount = await prisma.school.count();
-    const schoolCode = `SCH-${String(schoolCount + 1).padStart(3, '0')}`;
-    const school = await prisma.school.create({ data: { code: schoolCode, name: schoolName || `${name}'s School` } });
+    const chars = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let school;
+    for (let i = 0; i < 20; i++) {
+      let code = 'SCH-';
+      for (let j = 0; j < 6; j++) code += chars[Math.floor(Math.random() * chars.length)];
+      try {
+        school = await prisma.school.create({ data: { code, name: schoolName || `${name}'s School` } });
+        break;
+      } catch (e) {
+        if (e.code !== 'P2002') throw e;
+      }
+    }
+    if (!school) return res.status(500).json({ error: 'Failed to generate unique school code' });
     const hashed = await bcrypt.hash(password, 10);
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const expiry = new Date(Date.now() + 15 * 60 * 1000);
+
     const user = await prisma.user.create({
-      data: { email, password: hashed, name, role: role || 'headteacher', schoolId: school.id, phone: phone || '' },
+      data: { email, password: hashed, name, role: role || 'admin', schoolId: school.id, phone: phone || '', isVerified: false, verificationCode: otp, verificationExpiry: expiry },
     });
     await prisma.subscription.create({ data: { schoolId: school.id } });
 
@@ -45,16 +61,20 @@ router.post('/register', async (req, res) => {
       },
     });
 
-    const token = signToken({ id: user.id, email: user.email, role: user.role, schoolId: school.id });
+    const via = {};
+    const emailRes = await sendOtpEmail(user.email, user.name, otp);
+    if (emailRes.success) via.email = true;
+    const smsRes = user.phone ? await sendSms(user.phone, `EduPlatform: Your verification code is ${otp}. Expires in 15 minutes.`) : { skipped: true };
+    if (smsRes.success) via.sms = true;
 
     if (user.phone) {
       sendRegistrationAlert(user.phone, user.name, school.name).catch(() => {});
     }
 
-    res.cookie('edu_token', token, COOKIE_OPTIONS);
     res.status(201).json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, schoolId: school.id, phone: user.phone, twoFactorEnabled: false },
-      token,
+      message: 'Account created! Check your email/SMS for a verification code.',
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, schoolId: school.id, phone: user.phone, twoFactorEnabled: false, isVerified: false },
+      verification: { otp, sentVia: via, expiresAt: expiry.toISOString(), message: !via.email && !via.sms ? 'No email/SMS configured. Your code is: ' + otp : 'Verification code sent.' },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -69,6 +89,8 @@ router.post('/login', async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+
+    if (!user.isVerified) return res.status(403).json({ error: 'Please verify your email first. Check your inbox for the verification code.', needsVerification: true, email: user.email });
 
     if (user.twoFactorEnabled) {
       const tempToken = signTempToken(user.id);
@@ -148,14 +170,12 @@ router.post('/verify-otp', async (req, res) => {
     if (user.verificationCode !== otp) return res.status(401).json({ error: 'Invalid OTP' });
     if (new Date() > new Date(user.verificationExpiry)) return res.status(401).json({ error: 'OTP expired' });
 
-    const tempPassword = crypto.randomBytes(12).toString('hex');
-    const hashed = await bcrypt.hash(tempPassword, 10);
     await prisma.user.update({
       where: { id: user.id },
-      data: { isVerified: true, verificationCode: null, verificationExpiry: null, password: hashed },
+      data: { isVerified: true, verificationCode: null, verificationExpiry: null },
     });
 
-    res.json({ message: 'Verified successfully', tempPassword });
+    res.json({ message: 'Verified successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

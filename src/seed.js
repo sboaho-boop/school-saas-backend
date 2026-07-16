@@ -69,7 +69,7 @@ async function main() {
 
   // Clear all existing data for clean reseed (order matters for FK constraints)
   await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
-  const tables = ['Submission','Assignment','TimetableSlot','StaffAttendance','PrivacyConsent','StudentReport','CardOrder','Transaction','StudentWallet','Grade','Attendance','FeeRecord','Notification','Message','Announcement','TaskComment','Task','Subject','Term','AcademicClass','Campus','Staff','User','Student','TransportRoute','AuditLog','PushSubscription'];
+  const tables = ['Submission','Assignment','TimetableSlot','StaffAttendance','PrivacyConsent','StudentReport','CardOrder','Transaction','StudentWallet','Grade','Attendance','FeeRecord','Notification','Message','Announcement','TaskComment','Task','Subject','Term','AcademicClass','Campus','Staff','User','Student','TransportRoute','AuditLog','PushSubscription','InventoryAssignment','InventoryItem','LessonPlan','Campaign','ConferenceBooking','ConferenceSlot','BedAllocation','Room','Hostel','BookLoan','Book','Incident','ExamSubmission','Question','Exam','Alumni'];
   for (const t of tables) {
     await prisma[t].deleteMany({});
   }
@@ -161,6 +161,7 @@ async function main() {
       const gender = i % 2 === 0 ? 'male' : 'female';
       const dob = `${2014 + Math.floor(i / 20)}-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}`;
       const data = {
+        indexNumber: `${code}-STU-${String(i + 1).padStart(3, '0')}`,
         firstName: first, lastName: last, email,
         classId: cls.id, className: cls.name,
         dateOfBirth: dob, gender,
@@ -218,10 +219,11 @@ async function main() {
       { name: `Teacher B ${name}`, email: `teacher2${userSuffix}`, phone: '+233205555555', role: 'Subject Teacher', department: 'Academics', staffType: 'teaching', assignedClass: createdClasses[1].name, assignedSubjects: JSON.stringify(['Science', 'Mathematics']), assignedRouteId: routes[1].id, assignedRouteName: routes[1].name },
       { name: `Staff ${name}`, email: `nont${userSuffix}`, phone: '+233206666666', role: 'Librarian', department: 'Support', staffType: 'non-teaching' },
     ];
-    for (const sm of staffMembers) {
+    for (let si = 0; si < staffMembers.length; si++) {
+      const sm = staffMembers[si];
       const cardUid = `STAFF-${code}-${Math.random().toString(16).slice(2, 10).toUpperCase()}`;
       const wristbandUid = sm.staffType === 'teaching' ? `WB-${code}-${Math.random().toString(16).slice(2, 8).toUpperCase()}` : undefined;
-      await prisma.staff.create({ data: { ...sm, cardUid, wristbandUid, status: 'active', hireDate: '2020-01-01', schoolId } });
+      await prisma.staff.create({ data: { ...sm, indexNumber: `${code}-STF-${String(si + 1).padStart(3, '0')}`, cardUid, wristbandUid, status: 'active', hireDate: '2020-01-01', schoolId } });
     }
 
     // Wallets
@@ -314,6 +316,24 @@ async function main() {
           } catch {}
         }
       }
+    }
+
+    // Library
+    const bookTitles = ['Mathematics for JHS','English Grammar','Science Explorers','Ghana Our Country','ICT Fundamentals'];
+    for (const title of bookTitles) {
+      await prisma.book.create({ data: { schoolId, title, author: 'EduPlatform', isbn: `978-${Math.floor(Math.random()*1000000000000)}`, category: pickRandom(['Textbook','Reference','Fiction']), quantity: 10, availableQuantity: 10, shelfLocation: `Shelf-${Math.floor(Math.random()*10)}` } });
+    }
+
+    // Hostel
+    const hostel = await prisma.hostel.create({ data: { schoolId, name: `${name} Hostel`, gender: 'mixed', warden: 'Mr. Mensah', capacity: 50 } });
+    for (let i = 1; i <= 5; i++) {
+      await prisma.room.create({ data: { schoolId, hostelId: hostel.id, roomNumber: `Room ${i}`, capacity: 4, gender: 'mixed' } });
+    }
+
+    // Inventory
+    const invItems = ['Whiteboard Markers','Chairs','Desks','Projector','Laptop','Printer','Textbooks','Sports Equipment'];
+    for (const item of invItems) {
+      await prisma.inventoryItem.create({ data: { schoolId, name: item, category: pickRandom(['Furniture','Electronics','Supplies','Sports']), quantity: Math.floor(Math.random()*50)+5, location: pickRandom(['Store Room','Library','Staff Room','Classroom A']), status: 'available' } });
     }
 
     return { schoolId, schoolName: name, userSuffix };

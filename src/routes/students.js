@@ -4,6 +4,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { checkPlanLimit } = require('../middleware/planLimit');
 const { logAudit } = require('../middleware/audit');
 const { sendSms } = require('../lib/sms');
+const { generateStudentIndexNumber } = require('../lib/index-number');
 
 const router = Router();
 router.use(authenticate);
@@ -27,8 +28,9 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('student'), async (req, res) => {
   try {
-    const student = await prisma.student.create({ data: { ...req.body, schoolId: req.schoolId } });
-    await logAudit(req, 'create', 'student', student.id, { name: `${student.firstName} ${student.lastName}` });
+    const indexNumber = await generateStudentIndexNumber(req.schoolId);
+    const student = await prisma.student.create({ data: { ...req.body, indexNumber, schoolId: req.schoolId } });
+    await logAudit(req, 'create', 'student', student.id, { name: `${student.firstName} ${student.lastName}`, indexNumber });
     if (student.parentPhone) {
       const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
       sendSms(student.parentPhone, `Dear parent, ${student.firstName} ${student.lastName} has been admitted to ${school?.name || 'our school'}. Welcome! - EduPlatform`).catch(() => {});
