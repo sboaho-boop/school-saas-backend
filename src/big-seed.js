@@ -64,14 +64,14 @@ async function main() {
     create: { email: 'super@eduplatform.com', password: superHash, name: 'Super Admin', role: 'owner' },
   });
 
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
+  await prisma.$executeRawUnsafe('SET session_replication_role = replica;');
   const tables = ['Submission','Assignment','TimetableSlot','StaffAttendance','PrivacyConsent','StudentReport','CardOrder','Transaction','StudentWallet','Grade','Attendance','FeeRecord','Notification','Message','Announcement','TaskComment','Task','Subject','Term','AcademicClass','Campus','Staff','User','Student','TransportRoute','AuditLog','PushSubscription','InventoryAssignment','InventoryItem','LessonPlan','Campaign','ConferenceBooking','ConferenceSlot','BedAllocation','Room','Hostel','BookLoan','Book','Incident','ExamSubmission','Question','Exam','Alumni','AIConversation','Feedback'];
   for (const t of tables) {
     try { await prisma[t].deleteMany({}); } catch {}
   }
   try { await prisma.subscription.deleteMany({}); } catch {}
   try { await prisma.school.deleteMany({}); } catch {}
-  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
+  await prisma.$executeRawUnsafe('SET session_replication_role = DEFAULT;');
 
   const hash = await bcrypt.hash('password123', 10);
   const demoHash = await bcrypt.hash('demo123', 10);
@@ -81,7 +81,7 @@ async function main() {
     const code = generateSchoolCode(schoolIdx);
     const name = SCHOOL_NAMES[schoolIdx];
     const city = SCHOOL_CITIES[schoolIdx];
-    const studentCount = Math.floor(Math.random() * (12000 - 900 + 1)) + 900;
+    const studentCount = 2000;
     const teachStaff = Math.max(20, Math.ceil(studentCount / 28));
     const nonTeachStaff = Math.max(5, Math.ceil(studentCount / 80));
     const totalStaffCount = teachStaff + nonTeachStaff + 3;
