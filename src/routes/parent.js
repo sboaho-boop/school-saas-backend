@@ -88,6 +88,7 @@ router.post('/wallet/initiate-topup', authenticateParent, async (req, res) => {
     if (amount > 5000) return res.status(400).json({ error: 'Maximum top-up is GHS 5,000' });
     const student = await prisma.student.findFirst({ where: { id: studentId, parentEmail: req.parentEmail, schoolId: req.schoolId } });
     if (!student) return res.status(403).json({ error: 'Not your child' });
+    const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
     const reference = `WALLET-${studentId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     const amountPesewas = Math.round(amount * 100);
     const checkout = await createCheckout({
@@ -100,6 +101,7 @@ router.post('/wallet/initiate-topup', authenticateParent, async (req, res) => {
       callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/wallet/hubtel-webhook`,
       returnUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/parent/dashboard?topup=success&ref=${reference}`,
       cancellationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/parent/dashboard?topup=cancelled`,
+      schoolCredentials: school,
     });
     await prisma.studentWallet.upsert({
       where: { studentId },

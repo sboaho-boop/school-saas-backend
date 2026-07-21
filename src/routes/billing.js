@@ -52,6 +52,7 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
       if (req.user.phone) sendSubscriptionAlert(req.user.phone, plan, 'upgraded').catch(() => {});
       return res.json({ message: `Downgraded to ${plan}` });
     }
+    const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
     const reference = crypto.randomBytes(12).toString('hex');
     const checkout = await createCheckout({
       amount: PLANS[plan].amount,
@@ -61,6 +62,7 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
       payeeName: req.user.name,
       payeeEmail: req.user.email,
       payeeMobileNumber: req.user.phone,
+      schoolCredentials: school,
     });
     await prisma.subscription.upsert({
       where: { schoolId: req.schoolId },
