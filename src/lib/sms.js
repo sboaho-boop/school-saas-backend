@@ -4,12 +4,14 @@ const url = require('url');
 const HUBTEL_SMS_BASE_URL = process.env.HUBTEL_SMS_BASE_URL || 'https://api.hubtel.com';
 const HUBTEL_SMS_CLIENT_ID = process.env.HUBTEL_SMS_CLIENT_ID || '';
 const HUBTEL_SMS_CLIENT_SECRET = process.env.HUBTEL_SMS_CLIENT_SECRET || '';
-const HUBTEL_SMS_FROM = process.env.HUBTEL_SMS_FROM || 'EduPlatform';
+const HUBTEL_SMS_FROM = process.env.HUBTEL_SMS_FROM || 'EDUPLATFORM';
 
-function sendSms(phone, message) {
+function sendSms(phone, message, credentials) {
   return new Promise((resolve, reject) => {
-    if (!HUBTEL_SMS_CLIENT_ID || !HUBTEL_SMS_CLIENT_SECRET) return resolve({ skipped: true, reason: 'HUBTEL_SMS_CLIENT_ID/SECRET not set' });
-    const apiUrl = `${HUBTEL_SMS_BASE_URL}/v1/messages/send?clientid=${encodeURIComponent(HUBTEL_SMS_CLIENT_ID)}&clientsecret=${encodeURIComponent(HUBTEL_SMS_CLIENT_SECRET)}&from=${encodeURIComponent(HUBTEL_SMS_FROM)}&to=${encodeURIComponent(phone)}&content=${encodeURIComponent(message)}`;
+    const clientId = credentials?.hubtelSmsClientId || HUBTEL_SMS_CLIENT_ID;
+    const clientSecret = credentials?.hubtelSmsClientSecret || HUBTEL_SMS_CLIENT_SECRET;
+    if (!clientId || !clientSecret) return resolve({ skipped: true, reason: 'SMS client ID/Secret not set' });
+    const apiUrl = `${HUBTEL_SMS_BASE_URL}/v1/messages/send?clientid=${encodeURIComponent(clientId)}&clientsecret=${encodeURIComponent(clientSecret)}&from=${encodeURIComponent(HUBTEL_SMS_FROM)}&to=${encodeURIComponent(phone)}&content=${encodeURIComponent(message)}`;
     const parsed = new url.URL(apiUrl);
     https.get(parsed.href, (res) => {
       let body = '';
@@ -23,11 +25,11 @@ function sendSms(phone, message) {
 }
 
 async function sendRegistrationAlert(phone, name, schoolName) {
-  return sendSms(phone, `Welcome ${name}! Your school "${schoolName}" is registered on EduPlatform. Login at your dashboard to get started.`);
+  return sendSms(phone, `Welcome ${name}! Your school "${schoolName}" is registered on EDUPLATFORM SOFTWARE SERVICES. Login at your dashboard to get started.`);
 }
 
 async function sendLoginAlert(phone, name) {
-  return sendSms(phone, `Hi ${name}, a login was detected on your EduPlatform account. If this wasn't you, please change your password immediately.`);
+  return sendSms(phone, `Hi ${name}, a login was detected on your EDUPLATFORM SOFTWARE SERVICES account. If this wasn't you, please change your password immediately.`);
 }
 
 async function sendFeeReceipt(phone, studentName, amount, balance) {
@@ -43,7 +45,7 @@ async function sendLowBalanceAlert(phone, studentName, balance) {
 }
 
 async function sendSubscriptionAlert(phone, plan, action) {
-  return sendSms(phone, `Your EduPlatform subscription has been ${action}. Plan: ${plan}. Check your billing settings for details.`);
+  return sendSms(phone, `Your EDUPLATFORM SOFTWARE SERVICES subscription has been ${action}. Plan: ${plan}. Check your billing settings for details.`);
 }
 
 module.exports = { sendSms, sendRegistrationAlert, sendLoginAlert, sendFeeReceipt, sendAttendanceAlert, sendLowBalanceAlert, sendSubscriptionAlert };

@@ -2,23 +2,21 @@ const prisma = require('./lib/prisma');
 
 async function wipe() {
   console.log('Wiping all data via raw SQL...');
-
-  const tables = await prisma.$queryRawUnsafe(
-    `SELECT tablename AS name FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;`
-  );
-
-  await prisma.$executeRawUnsafe('SET session_replication_role = replica;');
-
+  
+  await prisma.$executeRawUnsafe('PRAGMA foreign_keys = OFF;');
+  
+  const tables = await prisma.$queryRawUnsafe("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '_prisma%' AND name NOT LIKE 'sqlite_%' ORDER BY name;");
+  
   for (const t of tables) {
     try {
-      await prisma.$executeRawUnsafe(`DELETE FROM "${t.name}" CASCADE;`);
+      await prisma.$executeRawUnsafe(`DELETE FROM "${t.name}";`);
       console.log(`  Cleared ${t.name}`);
     } catch (err) {
       console.log(`  Skipped ${t.name} (${err.message.slice(0, 50)})`);
     }
   }
-
-  await prisma.$executeRawUnsafe('SET session_replication_role = DEFAULT;');
+  
+  await prisma.$executeRawUnsafe('PRAGMA foreign_keys = ON;');
   console.log('\nAll data wiped.');
 }
 

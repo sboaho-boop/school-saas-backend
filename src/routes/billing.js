@@ -55,7 +55,7 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
     const reference = crypto.randomBytes(12).toString('hex');
     const checkout = await createCheckout({
       amount: PLANS[plan].amount,
-      title: `EduPlatform ${PLANS[plan].name} Plan`,
+      title: `EDUPLATFORM SOFTWARE SERVICES ${PLANS[plan].name} Plan`,
       description: `${PLANS[plan].name} subscription for ${req.user.name}`,
       clientReference: reference,
       payeeName: req.user.name,

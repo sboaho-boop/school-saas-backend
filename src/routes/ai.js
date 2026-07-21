@@ -6,7 +6,10 @@ const { authenticate } = require('../middleware/auth');
 const router = Router();
 router.use(authenticate);
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function getOpenAI() {
+  if (!process.env.OPENAI_API_KEY) return null;
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
 
 const SYSTEM_PROMPT = `You are "Nova", a friendly AI learning companion for kids in Ghana. You help students learn Mathematics, English, Science, and Ghanaian languages (Twi, Ga, Ewe, Fante, Dagbani).
 
@@ -54,7 +57,10 @@ router.post('/chat', async (req, res) => {
       { role: 'user', content: message },
     ];
 
-    const completion = await openai.chat.completions.create({
+    const ai = getOpenAI();
+    if (!ai) return res.status(503).json({ error: 'AI service not configured. Set OPENAI_API_KEY.' });
+
+    const completion = await ai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages,
       max_tokens: 1024,

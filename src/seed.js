@@ -321,7 +321,7 @@ async function main() {
     // Library
     const bookTitles = ['Mathematics for JHS','English Grammar','Science Explorers','Ghana Our Country','ICT Fundamentals'];
     for (const title of bookTitles) {
-      await prisma.book.create({ data: { schoolId, title, author: 'EduPlatform', isbn: `978-${Math.floor(Math.random()*1000000000000)}`, category: pickRandom(['Textbook','Reference','Fiction']), quantity: 10, availableQuantity: 10, shelfLocation: `Shelf-${Math.floor(Math.random()*10)}` } });
+      await prisma.book.create({ data: { schoolId, title, author: 'EDUPLATFORM SOFTWARE SERVICES', isbn: `978-${Math.floor(Math.random()*1000000000000)}`, category: pickRandom(['Textbook','Reference','Fiction']), quantity: 10, availableQuantity: 10, shelfLocation: `Shelf-${Math.floor(Math.random()*10)}` } });
     }
 
     // Hostel

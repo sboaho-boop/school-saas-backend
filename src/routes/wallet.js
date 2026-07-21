@@ -317,7 +317,7 @@ router.get('/zpl/:studentId', async (req, res) => {
     if (!wallet || !wallet.cardUid) return res.status(404).json({ error: 'No card found' });
     const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
     const zpl = generateCardZpl({
-      schoolName: school?.name || 'EduPlatform',
+      schoolName: school?.name || 'EDUPLATFORM SOFTWARE SERVICES',
       studentName: wallet.studentName,
       cardUid: wallet.cardUid,
     });
@@ -339,7 +339,7 @@ router.get('/zpl-bulk', async (req, res) => {
     if (wallets.length === 0) return res.status(404).json({ error: 'No cards to export' });
     const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
     const cards = wallets.map((w) => ({
-      schoolName: school?.name || 'EduPlatform',
+      schoolName: school?.name || 'EDUPLATFORM SOFTWARE SERVICES',
       studentName: w.studentName,
       cardUid: w.cardUid,
     }));

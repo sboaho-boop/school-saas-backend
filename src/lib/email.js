@@ -4,7 +4,7 @@ const SMTP_HOST = process.env.SMTP_HOST || '';
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
 const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
-const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@eduplatform.com';
+const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@eduplatformsoftware.com';
 
 let transporter = null;
 
@@ -33,9 +33,9 @@ async function sendEmail(to, subject, html) {
 }
 
 async function sendOtpEmail(to, name, otp) {
-  return sendEmail(to, 'Your EduPlatform Verification Code', `
+  return sendEmail(to, 'Your EDUPLATFORM SOFTWARE SERVICES Verification Code', `
     <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
-      <h2 style="color:#4f46e5;">EduPlatform</h2>
+      <h2 style="color:#4f46e5;">EDUPLATFORM SOFTWARE SERVICES</h2>
       <p>Hi ${name},</p>
       <p>Your verification code is:</p>
       <div style="background:#f3f4f6;border-radius:8px;padding:16px;text-align:center;font-size:28px;letter-spacing:6px;font-weight:bold;color:#4f46e5;">${otp}</div>

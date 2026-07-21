@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -41,7 +41,13 @@ model School {
   id           String   @id @default(cuid())
   code         String?  @unique
   name         String
+  address      String   @default("")
   pinThreshold  Float    @default(20)
+  hubtelClientId     String? @default("")
+  hubtelClientSecret String? @default("")
+  hubtelMerchantAccount String? @default("")
+  hubtelSmsClientId     String? @default("")
+  hubtelSmsClientSecret String? @default("")
   createdAt    DateTime @default(now())
 
   users          User[]
@@ -90,6 +96,7 @@ model School {
   driverTrips     DriverTrip[]
   calendarEvents  CalendarEvent[]
   feedbacks       Feedback[]
+  aiConversations AIConversation[]
 }
 
 model User {
@@ -876,7 +883,9 @@ model Submission {
 }
 
 model PrivacyConsent {
-  school School @relation(fields: [schoolId], references: [id])
+  id      String @id @default(cuid())
+  schoolId String
+  school  School @relation(fields: [schoolId], references: [id])
 }
 
 model AIConversation {

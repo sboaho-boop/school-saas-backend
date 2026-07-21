@@ -7,22 +7,23 @@ const HUBTEL_CHECKOUT_URL = process.env.HUBTEL_CHECKOUT_URL || 'https://api.hubt
 const BASE_URL = process.env.BASE_URL || 'http://localhost:4000';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-function getAuthHeader() {
-  const auth = Buffer.from(`${HUBTEL_CLIENT_ID}:${HUBTEL_CLIENT_SECRET}`).toString('base64');
-  return `Basic ${auth}`;
-}
-
-function createCheckout({ amount, title, description, clientReference, payeeName, payeeEmail, payeeMobileNumber, callbackUrl, returnUrl, cancellationUrl }) {
+function createCheckout({ amount, title, description, clientReference, payeeName, payeeEmail, payeeMobileNumber, callbackUrl, returnUrl, cancellationUrl, schoolCredentials }) {
   return new Promise((resolve, reject) => {
-    if (!HUBTEL_CLIENT_ID || !HUBTEL_CLIENT_SECRET || !HUBTEL_MERCHANT_ACCOUNT) {
-      return reject(new Error('Hubtel payment not configured. Set HUBTEL_CLIENT_ID, HUBTEL_CLIENT_SECRET, and HUBTEL_MERCHANT_ACCOUNT.'));
+    const clientId = schoolCredentials?.hubtelClientId || HUBTEL_CLIENT_ID;
+    const clientSecret = schoolCredentials?.hubtelClientSecret || HUBTEL_CLIENT_SECRET;
+    const merchantAccount = schoolCredentials?.hubtelMerchantAccount || HUBTEL_MERCHANT_ACCOUNT;
+
+    if (!clientId || !clientSecret || !merchantAccount) {
+      return reject(new Error('Hubtel payment not configured. Set Hubtel credentials in school settings or environment variables.'));
     }
 
+    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
     const payload = JSON.stringify({
-      merchantAccountNumber: HUBTEL_MERCHANT_ACCOUNT,
+      merchantAccountNumber: merchantAccount,
       totalAmount: amount,
       title,
-      description: description || 'Payment for EduPlatform',
+      description: description || 'Payment for EDUPLATFORM SOFTWARE SERVICES',
       callbackUrl: callbackUrl || `${BASE_URL}/api/billing/hubtel-webhook`,
       returnUrl: returnUrl || `${FRONTEND_URL}/settings?billing=success`,
       cancellationUrl: cancellationUrl || `${FRONTEND_URL}/settings?billing=cancelled`,
@@ -38,7 +39,7 @@ function createCheckout({ amount, title, description, clientReference, payeeName
       path: parsed.pathname,
       method: 'POST',
       headers: {
-        'Authorization': getAuthHeader(),
+        'Authorization': `Basic ${auth}`,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(payload),
       },

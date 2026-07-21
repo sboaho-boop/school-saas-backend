@@ -64,14 +64,14 @@ async function main() {
     create: { email: 'super@eduplatform.com', password: superHash, name: 'Super Admin', role: 'owner' },
   });
 
-  await prisma.$executeRawUnsafe('SET session_replication_role = replica;');
+  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF");
   const tables = ['Submission','Assignment','TimetableSlot','StaffAttendance','PrivacyConsent','StudentReport','CardOrder','Transaction','StudentWallet','Grade','Attendance','FeeRecord','Notification','Message','Announcement','TaskComment','Task','Subject','Term','AcademicClass','Campus','Staff','User','Student','TransportRoute','AuditLog','PushSubscription','InventoryAssignment','InventoryItem','LessonPlan','Campaign','ConferenceBooking','ConferenceSlot','BedAllocation','Room','Hostel','BookLoan','Book','Incident','ExamSubmission','Question','Exam','Alumni','AIConversation','Feedback'];
   for (const t of tables) {
     try { await prisma[t].deleteMany({}); } catch {}
   }
   try { await prisma.subscription.deleteMany({}); } catch {}
   try { await prisma.school.deleteMany({}); } catch {}
-  await prisma.$executeRawUnsafe('SET session_replication_role = DEFAULT;');
+  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON");
 
   const hash = await bcrypt.hash('password123', 10);
   const demoHash = await bcrypt.hash('demo123', 10);
@@ -144,8 +144,8 @@ async function main() {
 
     // Transport routes
     const routeDefs = [
-      { name: `Route A - ${name}`, desc: 'Main route', stops: JSON.stringify(['Central Station', 'Market Square', 'School Gate']), driverName: `Driver A ${name}`, driverPhone: `+233201${String(100001 + schoolIdx)}`, capacity: 60, status: 'active', schoolId },
-      { name: `Route B - ${name}`, desc: 'Secondary route', stops: JSON.stringify(['Station', 'Junction', 'School']), driverName: `Driver B ${name}`, driverPhone: `+233202${String(100001 + schoolIdx)}`, capacity: 45, status: 'active', schoolId },
+      { name: `Route A - ${name}`, description: 'Main route', stops: JSON.stringify(['Central Station', 'Market Square', 'School Gate']), driverName: `Driver A ${name}`, driverPhone: `+233201${String(100001 + schoolIdx)}`, capacity: 60, status: 'active', schoolId },
+      { name: `Route B - ${name}`, description: 'Secondary route', stops: JSON.stringify(['Station', 'Junction', 'School']), driverName: `Driver B ${name}`, driverPhone: `+233202${String(100001 + schoolIdx)}`, capacity: 45, status: 'active', schoolId },
     ];
     const routes = await Promise.all(routeDefs.map(r => prisma.transportRoute.create({ data: r })));
 
@@ -314,7 +314,7 @@ async function main() {
     const bookGenres = ['Mathematics', 'English', 'Science', 'Social Studies', 'ICT', 'Ghanaian Language', 'History', 'Geography'];
     for (const genre of bookGenres) {
       await prisma.book.create({
-        data: { schoolId, title: `${genre} Textbook - ${name}`, author: 'EduPlatform', isbn: `978-${schoolIdx}${Math.floor(Math.random() * 1000000000)}`, category: 'Textbook', quantity: 20, availableQuantity: 20, shelfLocation: `Shelf-${Math.floor(Math.random() * 20)}` },
+        data: { schoolId, title: `${genre} Textbook - ${name}`, author: 'EDUPLATFORM SOFTWARE SERVICES', isbn: `978-${schoolIdx}${Math.floor(Math.random() * 1000000000)}`, category: 'Textbook', quantity: 20, availableQuantity: 20, shelfLocation: `Shelf-${Math.floor(Math.random() * 20)}` },
       });
     }
 

@@ -81,7 +81,7 @@ router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('staff'), a
     const via = {};
     const emailRes = await sendOtpEmail(member.email, member.name, otp);
     if (emailRes.success) via.email = true;
-    const smsRes = member.phone ? await sendSms(member.phone, `EduPlatform: Your verification code is ${otp}. Expires in 15 minutes.`) : { skipped: true };
+    const smsRes = member.phone ? await sendSms(member.phone, `EDUPLATFORM SOFTWARE SERVICES: Your verification code is ${otp}. Expires in 15 minutes.`) : { skipped: true };
     if (smsRes.success) via.sms = true;
 
     await logAudit(req, 'create', 'staff', member.id, { name: member.name, verificationSent: via });

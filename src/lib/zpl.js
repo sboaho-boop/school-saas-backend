@@ -2,7 +2,7 @@ function escapeZpl(str) {
   return str.replace(/[\\^~]/g, '');
 }
 
-function generateCardZpl({ schoolName = 'EduPlatform', studentName, cardUid }) {
+function generateCardZpl({ schoolName = 'EDUPLATFORM SOFTWARE SERVICES', studentName, cardUid }) {
   const sn = escapeZpl(schoolName);
   const nm = escapeZpl(studentName || 'Student');
   const uid = escapeZpl(cardUid || 'EDU-NONE');
@@ -18,7 +18,7 @@ function generateCardZpl({ schoolName = 'EduPlatform', studentName, cardUid }) {
     '^CF0,18',
     '^FO25,370^FD' + uid + '^FS',
     '^GB0,50,812,2,B,0^FS',
-    '^FO25,410^CF0,14^FDEduPlatform NFC Card^FS',
+    '^FO25,410^CF0,14^FDEDUPLATFORM SOFTWARE SERVICES NFC Card^FS',
     '^FO25,435^CF0,12^FDwww.eduplatform.com^FS',
     '^XZ',
   ];

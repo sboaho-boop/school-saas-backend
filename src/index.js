@@ -43,6 +43,7 @@ const inventoryRoutes = require('./routes/inventory');
 const calendarRoutes = require('./routes/calendar');
 const alumniRoutes = require('./routes/alumni');
 const aiRoutes = require('./routes/ai');
+const schoolSettingsRoutes = require('./routes/school-settings');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -104,6 +105,7 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/alumni', alumniRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/school', schoolSettingsRoutes);
 
 const path = require('path');
 const fs = require('fs');
@@ -130,5 +132,5 @@ try {
 } catch {}
 
 app.listen(PORT, () => {
-  console.log(`EduPlatform API running on http://localhost:${PORT}`);
+  console.log(`EDUPLATFORM SOFTWARE SERVICES API running on http://localhost:${PORT}`);
 });

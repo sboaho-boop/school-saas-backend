@@ -1,7 +1,7 @@
 {
   "name": "school-saas-backend",
   "version": "1.0.0",
-  "description": "EduPlatform school management SaaS - backend API",
+  "description": "EDUPLATFORM SOFTWARE SERVICES school management SaaS - backend API",
   "main": "src/index.js",
   "scripts": {
     "dev": "nodemon src/index.js",

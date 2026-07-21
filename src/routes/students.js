@@ -33,7 +33,7 @@ router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('student'),
     await logAudit(req, 'create', 'student', student.id, { name: `${student.firstName} ${student.lastName}`, indexNumber });
     if (student.parentPhone) {
       const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
-      sendSms(student.parentPhone, `Dear parent, ${student.firstName} ${student.lastName} has been admitted to ${school?.name || 'our school'}. Welcome! - EduPlatform`).catch(() => {});
+      sendSms(student.parentPhone, `Dear parent, ${student.firstName} ${student.lastName} has been admitted to ${school?.name || 'our school'}. Welcome! - EDUPLATFORM SOFTWARE SERVICES`).catch(() => {});
     }
     res.status(201).json(student);
   } catch (err) {

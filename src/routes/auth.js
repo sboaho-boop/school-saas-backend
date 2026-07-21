@@ -64,7 +64,7 @@ router.post('/register', async (req, res) => {
     const via = {};
     const emailRes = await sendOtpEmail(user.email, user.name, otp);
     if (emailRes.success) via.email = true;
-    const smsRes = user.phone ? await sendSms(user.phone, `EduPlatform: Your verification code is ${otp}. Expires in 15 minutes.`) : { skipped: true };
+    const smsRes = user.phone ? await sendSms(user.phone, `EDUPLATFORM SOFTWARE SERVICES: Your verification code is ${otp}. Expires in 15 minutes.`) : { skipped: true };
     if (smsRes.success) via.sms = true;
 
     if (user.phone) {
@@ -225,7 +225,7 @@ router.post('/2fa/setup', authenticate, async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    const secretObj = speakeasy.generateSecret({ name: `EduPlatform (${user.email})` });
+    const secretObj = speakeasy.generateSecret({ name: `EDUPLATFORM SOFTWARE SERVICES (${user.email})` });
     const qrCode = await QRCode.toDataURL(secretObj.otpauth_url);
 
     await prisma.user.update({ where: { id: user.id }, data: { twoFactorSecret: secretObj.base32 } });
