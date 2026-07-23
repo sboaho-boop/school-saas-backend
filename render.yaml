@@ -1,23 +1,16 @@
 services:
   - type: web
-    name: school-saas-backend
-    env: node
+    name: eduplatform-backend
+    runtime: node
+    plan: free
     buildCommand: npm install && npx prisma generate
     startCommand: npx prisma db push --accept-data-loss && node src/index.js
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: school-saas-db
-          property: connectionString
+        value: file:./dev.db
       - key: JWT_SECRET
-        value: eduplatform-jwt-secret-change-in-production
-      - key: PORT
-        value: "4000"
-      - key: ALLOWED_ORIGINS
-        value: "http://localhost:3000,https://school-saas-fawn.vercel.app"
-
-databases:
-  - name: school-saas-db
-    databaseName: school_saas
-    user: school_saas_user
-    plan: free
+        generateValue: true
+      - key: BASE_URL
+        sync: false
