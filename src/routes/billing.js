@@ -78,13 +78,15 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
 
 router.post('/hubtel-webhook', async (req, res) => {
   try {
-    const { ClientReference, Status, Amount } = req.body;
+    const data = req.body.Data || req.body;
+    const { ClientReference, Status } = data;
+    console.log('Billing webhook received:', JSON.stringify(req.body));
     if (!ClientReference) return res.status(400).json({ error: 'Missing ClientReference' });
-    if (Status !== 'Success') return res.json({ message: 'Payment not successful' });
+    if (Status !== 'Success') return res.status(200).json({ message: 'Payment not successful' });
     const sub = await prisma.subscription.findFirst({ where: { pendingCheckoutRef: ClientReference } });
-    if (!sub || !sub.pendingPlan) return res.status(404).json({ error: 'No pending subscription found' });
+    if (!sub || !sub.pendingPlan) return res.status(200).json({ message: 'No pending subscription found' });
     const limits = PLANS[sub.pendingPlan];
-    if (!limits) return res.status(400).json({ error: 'Invalid plan' });
+    if (!limits) return res.status(200).json({ error: 'Invalid plan' });
     await prisma.subscription.update({
       where: { id: sub.id },
       data: {
@@ -98,16 +100,11 @@ router.post('/hubtel-webhook', async (req, res) => {
         currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       },
     });
-    if (sub.schoolId) {
-      const school = await prisma.school.findUnique({ where: { id: sub.schoolId } });
-      if (school) {
-        res.json({ message: `Subscription upgraded to ${sub.pendingPlan}` });
-      }
-    }
-    res.json({ message: 'Webhook processed' });
+    console.log(`Subscription upgraded to ${sub.pendingPlan} for school ${sub.schoolId}`);
+    res.status(200).json({ message: `Subscription upgraded to ${sub.pendingPlan}` });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Webhook processing failed' });
+    res.status(200).json({ error: 'Webhook processing failed' });
   }
 });
 

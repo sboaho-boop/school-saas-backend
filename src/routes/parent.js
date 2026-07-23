@@ -89,7 +89,7 @@ router.post('/wallet/initiate-topup', authenticateParent, async (req, res) => {
     const student = await prisma.student.findFirst({ where: { id: studentId, parentEmail: req.parentEmail, schoolId: req.schoolId } });
     if (!student) return res.status(403).json({ error: 'Not your child' });
     const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
-    const reference = `WALLET-${studentId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    const reference = `WL-${studentId.slice(0, 8)}-${Date.now().toString(36).slice(-6)}`;
     const amountPesewas = Math.round(amount * 100);
     const checkout = await createCheckout({
       amount: amountPesewas,

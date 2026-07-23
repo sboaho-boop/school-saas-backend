@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDUPLATFORM — Hubtel Integration Flow</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #fff; color: #1a1a2e; padding: 40px 60px; }
+        h1 { font-size: 28px; margin-bottom: 8px; color: #1a1a2e; }
+        .subtitle { color: #666; font-size: 14px; margin-bottom: 40px; }
+        h2 { font-size: 20px; margin: 30px 0 16px; color: #1a1a2e; border-bottom: 2px solid #6366f1; padding-bottom: 8px; }
+        h3 { font-size: 16px; margin: 20px 0 10px; color: #4a4a6a; }
+        .flow-container { background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 12px; padding: 30px; margin: 20px 0; }
+        .flow-step { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; position: relative; }
+        .flow-step:not(:last-child)::after { content: ''; position: absolute; left: 19px; top: 44px; width: 2px; height: 20px; background: #6366f1; }
+        .step-number { width: 40px; height: 40px; background: #6366f1; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; flex-shrink: 0; }
+        .step-content { flex: 1; }
+        .step-content p { font-size: 14px; line-height: 1.6; color: #333; }
+        .step-content .actor { font-weight: 600; color: #6366f1; }
+        .api-box { background: #1a1a2e; color: #a5f3fc; border-radius: 8px; padding: 16px; font-family: 'Courier New', monospace; font-size: 13px; margin: 10px 0; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+        .api-box .method { color: #facc15; font-weight: 700; }
+        .api-box .url { color: #4ade80; }
+        .api-box .param { color: #c4b5fd; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+        th { background: #6366f1; color: #fff; padding: 10px 12px; text-align: left; font-weight: 600; }
+        td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
+        tr:nth-child(even) td { background: #f8f9fa; }
+        .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .badge-success { background: #dcfce7; color: #166534; }
+        .badge-info { background: #dbeafe; color: #1e40af; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+        .note { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; font-size: 13px; color: #92400e; }
+        @media print { body { padding: 20px; } h1 { font-size: 24px; } }
+    </style>
+</head>
+<body>
+
+<h1>EDUPLATFORM SOFTWARE SERVICES</h1>
+<p class="subtitle">Hubtel Online Checkout API Integration Flow — UAT Document</p>
+<p class="subtitle">Prepared for: Hubtel UAT Review | Date: July 2026</p>
+
+<h2>1. Integration Overview</h2>
+<p style="font-size: 14px; line-height: 1.8; margin-bottom: 20px;">
+    EDUPLATFORM is a multi-tenant school management SaaS platform serving schools across Ghana. 
+    We integrate with <strong>Hubtel Online Checkout</strong> to accept payments from parents for:
+</p>
+<ul style="font-size: 14px; line-height: 2; margin-left: 20px; margin-bottom: 20px;">
+    <li><strong>Student Wallet Top-Up</strong> — Parents load money into their child's school wallet</li>
+    <li><strong>School Subscription</strong> — Schools pay for their EDUPLATFORM subscription plan</li>
+</ul>
+<p style="font-size: 14px; line-height: 1.8; margin-bottom: 20px;">
+    Each school on the platform has its own Hubtel merchant account. Payments go directly to the school's account. 
+    EDUPLATFORM does not hold or process funds — Hubtel handles all payment processing.
+</p>
+
+<h2>2. Authentication</h2>
+<p style="font-size: 14px; line-height: 1.8; margin-bottom: 10px;">
+    We use <strong>HTTP Basic Authentication</strong> with the following credentials:
+</p>
+<table>
+    <tr><th>API</th><th>Credential Type</th><th>Usage</th></tr>
+    <tr><td>Online Checkout</td><td>API ID + API Key</td><td>Base64 encoded in Authorization header</td></tr>
+    <tr><td>Transaction Status Check</td><td>API ID + API Key</td><td>Base64 encoded in Authorization header</td></tr>
+</table>
+<div class="api-box"><span class="method">Authorization:</span> Basic {base64_encode(API_ID:API_KEY)}</div>
+
+<h2>3. Payment Flow — Wallet Top-Up (Parent)</h2>
+<div class="flow-container">
+    <div class="flow-step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+            <p><span class="actor">Parent:</span> Logs into EDUPLATFORM parent portal → Selects child → Clicks "Top Up Wallet"</p>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+            <p><span class="actor">EDUPLATFORM → Hubtel:</span> Sends POST request to create checkout session</p>
+            <div class="api-box"><span class="method">POST</span> <span class="url">https://payproxyapi.hubtel.com/items/initiate</span>
+<span class="param">{
+    "totalAmount": 100.00,
+    "description": "Wallet Top-Up for John Mensah",
+    "callbackUrl": "https://your-app.com/api/wallet/hubtel-webhook",
+    "returnUrl": "https://your-app.com/parent/dashboard?topup=success",
+    "merchantAccountNumber": "0556674353",
+    "cancellationUrl": "https://your-app.com/parent/dashboard?topup=cancelled",
+    "clientReference": "WL-aB3xK9m2-1k3f7z"
+}</span></div>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+            <p><span class="actor">Hubtel → EDUPLATFORM:</span> Returns checkout URL</p>
+            <div class="api-box">{
+    <span class="param">"responseCode"</span>: "0000",
+    <span class="param">"status"</span>: "Success",
+    <span class="param">"data"</span>: {
+        <span class="param">"checkoutUrl"</span>: "https://pay.hubtel.com/7569a11e8b784f21baa9443b3fce31ed",
+        <span class="param">"checkoutId"</span>: "7569a11e8b784f21baa9443b3fce31ed",
+        <span class="param">"clientReference"</span>: "WL-aB3xK9m2-1k3f7z"
+    }
+}</div>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+            <p><span class="actor">EDUPLATFORM → Parent:</span> Redirects parent to Hubtel checkout page</p>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">5</div>
+        <div class="step-content">
+            <p><span class="actor">Parent:</span> Selects payment method (Mobile Money / Bank Card / GhQR) → Enters mobile number → Receives OTP → Confirms payment</p>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">6</div>
+        <div class="step-content">
+            <p><span class="actor">Hubtel → EDUPLATFORM:</span> Sends callback with payment result</p>
+            <div class="api-box"><span class="method">POST</span> <span class="url">https://your-app.com/api/wallet/hubtel-webhook</span>
+{
+    <span class="param">"ResponseCode"</span>: "0000",
+    <span class="param">"Status"</span>: "Success",
+    <span class="param">"Data"</span>: {
+        <span class="param">"CheckoutId"</span>: "59e2fbbff4e443b98e09346881ac7e9a",
+        <span class="param">"ClientReference"</span>: "WL-aB3xK9m2-1k3f7z",
+        <span class="param">"Status"</span>: "Success",
+        <span class="param">"Amount"</span>: 100.00,
+        <span class="param">"CustomerPhoneNumber"</span>: "233242825109",
+        <span class="param">"PaymentDetails"</span>: {
+            <span class="param">"PaymentType"</span>: "mobilemoney",
+            <span class="param">"Channel"</span>: "mtn-gh"
+        }
+    }
+}</div>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">7</div>
+        <div class="step-content">
+            <p><span class="actor">EDUPLATFORM:</span> Credits student wallet balance → Returns 200 OK to Hubtel</p>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">8</div>
+        <div class="step-content">
+            <p><span class="actor">Hubtel → Parent:</span> Redirects parent back to EDUPLATFORM success page</p>
+        </div>
+    </div>
+</div>
+
+<h2>4. Transaction Status Check</h2>
+<p style="font-size: 14px; line-height: 1.8; margin-bottom: 10px;">
+    If no callback is received within 5 minutes, EDUPLATFORM performs a mandatory status check:
+</p>
+<div class="api-box"><span class="method">GET</span> <span class="url">https://api-txnstatus.hubtel.com/transactions/{merchantAccount}/status?clientReference={ref}</span></div>
+<p style="font-size: 14px; line-height: 1.8; margin-bottom: 10px;">Response:</p>
+<div class="api-box">{
+    <span class="param">"message"</span>: "Successful",
+    <span class="param">"responseCode"</span>: "0000",
+    <span class="param">"data"</span>: {
+        <span class="param">"status"</span>: "Paid",
+        <span class="param">"transactionId"</span>: "7fd01221faeb41469daec7b3561bddc5",
+        <span class="param">"amount"</span>: 100.0,
+        <span class="param">"charges"</span>: 2.50,
+        <span class="param">"amountAfterCharges"</span>: 97.50,
+        <span class="param">"paymentMethod"</span>: "mobilemoney"
+    }
+}</div>
+
+<h2>5. Payment Methods Supported</h2>
+<table>
+    <tr><th>Method</th><th>Channel</th><th>Status</th></tr>
+    <tr><td>MTN Mobile Money</td><td>mtn-gh</td><td><span class="badge badge-success">Supported</span></td></tr>
+    <tr><td>Vodafone Cash</td><td>vodafone-gh</td><td><span class="badge badge-success">Supported</span></td></tr>
+    <tr><td>AirtelTigo Money</td><td>airteltigo-gh</td><td><span class="badge badge-success">Supported</span></td></tr>
+    <tr><td>Bank Card</td><td>card</td><td><span class="badge badge-success">Supported</span></td></tr>
+    <tr><td>GhQR</td><td>ghqr</td><td><span class="badge badge-success">Supported</span></td></tr>
+    <tr><td>Hubtel Wallet</td><td>hubtel</td><td><span class="badge badge-success">Supported</span></td></tr>
+</table>
+
+<h2>6. Webhook Implementation</h2>
+<table>
+    <tr><th>Endpoint</th><th>Purpose</th><th>Triggered By</th></tr>
+    <tr><td><code>POST /api/wallet/hubtel-webhook</code></td><td>Wallet top-up callback</td><td>Hubtel payment completion</td></tr>
+    <tr><td><code>POST /api/billing/hubtel-webhook</code></td><td>Subscription payment callback</td><td>Hubtel payment completion</td></tr>
+    <tr><td><code>GET /api/hubtel/status/:ref</code></td><td>Transaction status check</td><td>Manual check or auto after 5 min</td></tr>
+</table>
+
+<h2>7. Error Handling</h2>
+<table>
+    <tr><th>Response Code</th><th>Description</th><th>EDUPLATFORM Action</th></tr>
+    <tr><td><span class="badge badge-success">0000</span></td><td>Success</td><td>Credit wallet / activate subscription</td></tr>
+    <tr><td><span class="badge badge-warning">2001</span></td><td>Payment failed (insufficient funds, timeout, etc.)</td><td>Log error, notify parent to retry</td></tr>
+    <tr><td><span class="badge badge-warning">4000</span></td><td>Validation error</td><td>Log and fix request parameters</td></tr>
+    <tr><td><span class="badge badge-info">0005</span></td><td>HTTP failure reaching payment partner</td><td>Perform transaction status check</td></tr>
+</table>
+
+<h2>8. Frontend URLs</h2>
+<table>
+    <tr><th>Page</th><th>URL</th></tr>
+    <tr><td>EDUPLATFORM Landing Page</td><td>https://school-saas-fawn.vercel.app</td></tr>
+    <tr><td>Parent Portal</td><td>https://school-saas-fawn.vercel.app/parent/login</td></tr>
+    <tr><td>School Admin Dashboard</td><td>https://school-saas-fawn.vercel.app/dashboard</td></tr>
+    <tr><td>Payment Settings</td><td>https://school-saas-fawn.vercel.app/settings</td></tr>
+</table>
+
+<h2>9. Contact Information</h2>
+<table>
+    <tr><th>Role</th><th>Details</th></tr>
+    <tr><td>Company</td><td>EDUPLATFORM SOFTWARE SERVICES</td></tr>
+    <tr><td>Developer</td><td>Christopher Boakye</td></tr>
+    <tr><td>Email</td><td>sboaho@gmail.com</td></tr>
+    <tr><td>Phone</td><td>+233 556 674 353</td></tr>
+</table>
+
+<div class="note">
+    <strong>Note:</strong> This document is prepared for Hubtel UAT (User Acceptance Testing) review. 
+    All webhook endpoints are live and ready to receive callbacks. Transaction status check is implemented 
+    and will be used as a fallback if no callback is received within 5 minutes.
+</div>
+
+</body>
+</html>
