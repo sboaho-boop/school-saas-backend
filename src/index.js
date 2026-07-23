@@ -56,6 +56,7 @@ const balanceRoutes = require('./routes/balance');
 const smsRoutes = require('./routes/sms');
 const creditScoreRoutes = require('./routes/credit-score');
 const identityReportRoutes = require('./routes/identity-report');
+const consumerProfileRoutes = require('./routes/consumer-profile');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -130,6 +131,7 @@ app.use('/api/balance', balanceRoutes);
 app.use('/api/sms', smsRoutes);
 app.use('/api/credit-score', creditScoreRoutes);
 app.use('/api/identity-report', identityReportRoutes);
+app.use('/api/consumer-profile', consumerProfileRoutes);
 
 const path = require('path');
 const fs = require('fs');
