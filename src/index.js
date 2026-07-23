@@ -54,6 +54,7 @@ const verificationRoutes = require('./routes/verification');
 const refundRoutes = require('./routes/refund');
 const balanceRoutes = require('./routes/balance');
 const smsRoutes = require('./routes/sms');
+const creditScoreRoutes = require('./routes/credit-score');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -126,6 +127,7 @@ app.use('/api/verification', verificationRoutes);
 app.use('/api/refund', refundRoutes);
 app.use('/api/balance', balanceRoutes);
 app.use('/api/sms', smsRoutes);
+app.use('/api/credit-score', creditScoreRoutes);
 
 const path = require('path');
 const fs = require('fs');
