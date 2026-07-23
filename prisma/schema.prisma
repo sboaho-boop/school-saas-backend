@@ -99,6 +99,7 @@ model School {
   feedbacks       Feedback[]
   aiConversations AIConversation[]
   directDebitPreapprovals DirectDebitPreapproval[]
+  recurringInvoices RecurringInvoice[]
 }
 
 model User {
@@ -921,4 +922,26 @@ model DirectDebitPreapproval {
   school School @relation(fields: [schoolId], references: [id])
 
   @@unique([schoolId, phone])
+}
+
+model RecurringInvoice {
+  id                    String   @id @default(cuid())
+  schoolId              String
+  studentId             String?
+  phone                 String
+  channel               String
+  recurringInvoiceId    String?
+  requestId             String?
+  description           String
+  paymentInterval       String
+  recurringAmount       Float
+  initialAmount         Float
+  startTime             String
+  orderDate             String
+  invoiceEndDate        String
+  status                String   @default("PENDING")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
 }
