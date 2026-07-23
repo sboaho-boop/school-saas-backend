@@ -46,6 +46,7 @@ const aiRoutes = require('./routes/ai');
 const schoolSettingsRoutes = require('./routes/school-settings');
 const hubtelStatusRoutes = require('./routes/hubtel-status');
 const sendToBankRoutes = require('./routes/send-to-bank');
+const directDebitRoutes = require('./routes/direct-debit');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -110,6 +111,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/school', schoolSettingsRoutes);
 app.use('/api/hubtel', hubtelStatusRoutes);
 app.use('/api/send-to-bank', sendToBankRoutes);
+app.use('/api/direct-debit', directDebitRoutes);
 
 const path = require('path');
 const fs = require('fs');

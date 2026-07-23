@@ -98,6 +98,7 @@ model School {
   calendarEvents  CalendarEvent[]
   feedbacks       Feedback[]
   aiConversations AIConversation[]
+  directDebitPreapprovals DirectDebitPreapproval[]
 }
 
 model User {
@@ -902,4 +903,22 @@ model AIConversation {
   createdAt   DateTime @default(now())
 
   school School @relation(fields: [schoolId], references: [id])
+}
+
+model DirectDebitPreapproval {
+  id                    String   @id @default(cuid())
+  schoolId              String
+  studentId             String?
+  phone                 String
+  channel               String
+  hubtelPreApprovalId   String?
+  clientReferenceId     String
+  verificationType      String?
+  preapprovalStatus     String   @default("PENDING")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@unique([schoolId, phone])
 }
