@@ -51,6 +51,7 @@ const recurringInvoiceRoutes = require('./routes/recurring-invoice');
 const commissionRoutes = require('./routes/commissions');
 const invoicingRoutes = require('./routes/invoicing');
 const verificationRoutes = require('./routes/verification');
+const refundRoutes = require('./routes/refund');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -120,6 +121,7 @@ app.use('/api/recurring-invoice', recurringInvoiceRoutes);
 app.use('/api/commissions', commissionRoutes);
 app.use('/api/invoicing', invoicingRoutes);
 app.use('/api/verification', verificationRoutes);
+app.use('/api/refund', refundRoutes);
 
 const path = require('path');
 const fs = require('fs');
