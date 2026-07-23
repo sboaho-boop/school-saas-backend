@@ -12,6 +12,7 @@ router.get('/hubtel', authenticate, async (req, res) => {
         hubtelClientId: true,
         hubtelClientSecret: true,
         hubtelMerchantAccount: true,
+        hubtelDisbursementAccount: true,
         hubtelSmsClientId: true,
         hubtelSmsClientSecret: true,
       },
@@ -25,13 +26,14 @@ router.get('/hubtel', authenticate, async (req, res) => {
 
 router.put('/hubtel', authenticate, requireRole('headteacher', 'admin', 'accountant'), async (req, res) => {
   try {
-    const { hubtelClientId, hubtelClientSecret, hubtelMerchantAccount, hubtelSmsClientId, hubtelSmsClientSecret } = req.body;
+    const { hubtelClientId, hubtelClientSecret, hubtelMerchantAccount, hubtelDisbursementAccount, hubtelSmsClientId, hubtelSmsClientSecret } = req.body;
     const school = await prisma.school.update({
       where: { id: req.schoolId },
       data: {
         hubtelClientId: hubtelClientId || '',
         hubtelClientSecret: hubtelClientSecret || '',
         hubtelMerchantAccount: hubtelMerchantAccount || '',
+        hubtelDisbursementAccount: hubtelDisbursementAccount || '',
         hubtelSmsClientId: hubtelSmsClientId || '',
         hubtelSmsClientSecret: hubtelSmsClientSecret || '',
       },
@@ -39,6 +41,7 @@ router.put('/hubtel', authenticate, requireRole('headteacher', 'admin', 'account
         hubtelClientId: true,
         hubtelClientSecret: true,
         hubtelMerchantAccount: true,
+        hubtelDisbursementAccount: true,
         hubtelSmsClientId: true,
         hubtelSmsClientSecret: true,
       },

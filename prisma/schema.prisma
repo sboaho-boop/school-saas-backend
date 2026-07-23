@@ -46,6 +46,7 @@ model School {
   hubtelClientId     String? @default("")
   hubtelClientSecret String? @default("")
   hubtelMerchantAccount String? @default("")
+  hubtelDisbursementAccount String? @default("")
   hubtelSmsClientId     String? @default("")
   hubtelSmsClientSecret String? @default("")
   createdAt    DateTime @default(now())
@@ -212,6 +213,10 @@ model Staff {
   assignedSubjects String   @default("[]")
   assignedRouteId  String?
   assignedRouteName String?
+  bankAccountNumber String?
+  bankAccountName   String?
+  bankCode          String?
+  bankName          String?
   cardUid          String?
   wristbandUid     String?
   status           String   @default("active")
