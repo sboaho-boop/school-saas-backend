@@ -79,10 +79,11 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
 router.post('/hubtel-webhook', async (req, res) => {
   try {
     const data = req.body.Data || req.body;
-    const { ClientReference, Status } = data;
+    const ClientReference = data.ClientReference || data.OrderId;
+    const Status = data.Status || data.Message;
     console.log('Billing webhook received:', JSON.stringify(req.body));
     if (!ClientReference) return res.status(400).json({ error: 'Missing ClientReference' });
-    if (Status !== 'Success') return res.status(200).json({ message: 'Payment not successful' });
+    if (Status !== 'Success' && Status !== 'success') return res.status(200).json({ message: 'Payment not successful' });
     const sub = await prisma.subscription.findFirst({ where: { pendingCheckoutRef: ClientReference } });
     if (!sub || !sub.pendingPlan) return res.status(200).json({ message: 'No pending subscription found' });
     const limits = PLANS[sub.pendingPlan];

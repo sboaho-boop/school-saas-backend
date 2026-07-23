@@ -7,10 +7,12 @@ router.post('/hubtel-webhook', async (req, res) => {
   try {
     console.log('Wallet webhook received:', JSON.stringify(req.body));
     const data = req.body.Data || req.body;
-    const { ClientReference, Status, Amount } = data;
+    const ClientReference = data.ClientReference || data.OrderId;
+    const Status = data.Status || data.Message;
+    const Amount = data.Amount;
     if (!ClientReference) return res.status(400).json({ error: 'Missing ClientReference' });
     if (!ClientReference.startsWith('WL-')) return res.json({ message: 'Not a wallet top-up' });
-    if (Status !== 'Success') return res.json({ message: 'Payment not successful' });
+    if (Status !== 'Success' && Status !== 'success') return res.json({ message: 'Payment not successful' });
     const parts = ClientReference.split('-');
     const studentId = parts[1];
     if (!studentId) return res.status(400).json({ error: 'Invalid reference format' });
