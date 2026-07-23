@@ -50,6 +50,7 @@ const directDebitRoutes = require('./routes/direct-debit');
 const recurringInvoiceRoutes = require('./routes/recurring-invoice');
 const commissionRoutes = require('./routes/commissions');
 const invoicingRoutes = require('./routes/invoicing');
+const verificationRoutes = require('./routes/verification');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -118,6 +119,7 @@ app.use('/api/direct-debit', directDebitRoutes);
 app.use('/api/recurring-invoice', recurringInvoiceRoutes);
 app.use('/api/commissions', commissionRoutes);
 app.use('/api/invoicing', invoicingRoutes);
+app.use('/api/verification', verificationRoutes);
 
 const path = require('path');
 const fs = require('fs');
