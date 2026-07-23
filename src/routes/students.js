@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { checkPlanLimit } = require('../middleware/planLimit');
@@ -28,8 +29,12 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('student'), async (req, res) => {
   try {
+    const data = { ...req.body };
+    if (data.password) {
+      data.password = await bcrypt.hash(data.password, 10);
+    }
     const indexNumber = await generateStudentIndexNumber(req.schoolId);
-    const student = await prisma.student.create({ data: { ...req.body, indexNumber, schoolId: req.schoolId } });
+    const student = await prisma.student.create({ data: { ...data, indexNumber, schoolId: req.schoolId } });
     await logAudit(req, 'create', 'student', student.id, { name: `${student.firstName} ${student.lastName}`, indexNumber });
     if (student.parentPhone) {
       const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
@@ -43,7 +48,11 @@ router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('student'),
 
 router.put('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
-    const student = await prisma.student.update({ where: { id: req.params.id }, data: { ...req.body, schoolId: req.schoolId } });
+    const data = { ...req.body, schoolId: req.schoolId };
+    if (data.password) {
+      data.password = await bcrypt.hash(data.password, 10);
+    }
+    const student = await prisma.student.update({ where: { id: req.params.id }, data });
     await logAudit(req, 'update', 'student', student.id, { updates: Object.keys(req.body) });
     res.json(student);
   } catch (err) {
