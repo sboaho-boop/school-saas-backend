@@ -9,17 +9,24 @@ router.post('/hubtel-webhook', async (req, res) => {
     const data = req.body.Data || req.body;
     const ClientReference = data.ClientReference || data.OrderId;
     const Status = data.Status || data.Message;
-    const Amount = data.Amount;
+    const ResponseCode = data.ResponseCode;
     if (!ClientReference) return res.status(400).json({ error: 'Missing ClientReference' });
     if (!ClientReference.startsWith('WL-')) return res.json({ message: 'Not a wallet top-up' });
-    if (Status !== 'Success' && Status !== 'success') return res.json({ message: 'Payment not successful' });
+    if (ResponseCode !== '0000' && Status !== 'Success' && Status !== 'success') {
+      return res.json({ message: 'Payment not successful', ResponseCode, Status });
+    }
     const parts = ClientReference.split('-');
     const studentId = parts[1];
     if (!studentId) return res.status(400).json({ error: 'Invalid reference format' });
     let wallet = await prisma.studentWallet.findUnique({ where: { studentId } });
     if (!wallet) return res.status(404).json({ error: 'Wallet not found' });
     if (wallet.pendingTopupRef !== ClientReference) return res.json({ message: 'Reference mismatch, already processed' });
-    const amount = Amount ? (Amount / 100) : (wallet.pendingTopupAmount || 0);
+
+    let amount = wallet.pendingTopupAmount || 0;
+    if (data.Amount !== undefined && data.Amount !== null) {
+      amount = data.AmountAfterCharges !== undefined ? data.AmountAfterCharges : data.Amount;
+    }
+
     const updated = await prisma.studentWallet.update({
       where: { studentId },
       data: { balance: { increment: amount }, pendingTopupRef: null, pendingTopupAmount: null },

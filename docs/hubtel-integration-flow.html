@@ -37,13 +37,13 @@
 <body>
 
 <h1>EDUPLATFORM SOFTWARE SERVICES</h1>
-<p class="subtitle">Hubtel Online Checkout API Integration Flow — UAT Document</p>
+<p class="subtitle">Hubtel Online Checkout + Direct Receive Money API Integration — UAT Document</p>
 <p class="subtitle">Prepared for: Hubtel UAT Review | Date: July 2026</p>
 
 <h2>1. Integration Overview</h2>
 <p style="font-size: 14px; line-height: 1.8; margin-bottom: 20px;">
     EDUPLATFORM is a multi-tenant school management SaaS platform serving schools across Ghana. 
-    We integrate with <strong>Hubtel Online Checkout</strong> to accept payments from parents for:
+    We integrate with <strong>Hubtel Online Checkout</strong> and <strong>Direct Receive Money API</strong> to accept payments from parents for:
 </p>
 <ul style="font-size: 14px; line-height: 2; margin-left: 20px; margin-bottom: 20px;">
     <li><strong>Student Wallet Top-Up</strong> — Parents load money into their child's school wallet</li>
@@ -61,6 +61,7 @@
 <table>
     <tr><th>API</th><th>Credential Type</th><th>Usage</th></tr>
     <tr><td>Online Checkout</td><td>API ID + API Key</td><td>Base64 encoded in Authorization header</td></tr>
+    <tr><td>Direct Receive Money</td><td>API ID + API Key</td><td>Base64 encoded in Authorization header</td></tr>
     <tr><td>Transaction Status Check</td><td>API ID + API Key</td><td>Base64 encoded in Authorization header</td></tr>
 </table>
 <div class="api-box"><span class="method">Authorization:</span> Basic {base64_encode(API_ID:API_KEY)}</div>
@@ -152,7 +153,83 @@
     </div>
 </div>
 
-<h2>4. Transaction Status Check</h2>
+<h2>4. Payment Flow — Wallet Top-Up via Direct Receive Money</h2>
+<p style="font-size: 14px; line-height: 1.8; margin-bottom: 10px;">
+    EDUPLATFORM also uses the <strong>Direct Receive Money API</strong> for wallet top-ups. This provides a seamless experience where the parent receives a mobile money prompt directly on their phone — no redirect needed.
+</p>
+<div class="flow-container">
+    <div class="flow-step">
+        <div class="step-number">1</div>
+        <div class="step-content">
+            <p><span class="actor">Parent:</span> Logs into EDUPLATFORM parent portal → Selects child → Enters amount, phone number, and selects network (MTN/Vodafone/AirtelTigo)</p>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">2</div>
+        <div class="step-content">
+            <p><span class="actor">EDUPLATFORM → Hubtel:</span> Sends POST request to Direct Receive Money endpoint</p>
+            <div class="api-box"><span class="method">POST</span> <span class="url">https://rmp.hubtel.com/merchantaccount/merchants/{CollectionAccount}/receive/mobilemoney</span>
+<span class="param">{
+    "CustomerName": "parent@email.com",
+    "CustomerMsisdn": "233241234567",
+    "Channel": "mtn-gh",
+    "Amount": 100.00,
+    "PrimaryCallbackUrl": "https://your-app.com/api/wallet/hubtel-webhook",
+    "Description": "Top up wallet for John Mensah",
+    "ClientReference": "WL-aB3xK9m2-1k3f7z"
+}</span></div>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">3</div>
+        <div class="step-content">
+            <p><span class="actor">Hubtel → EDUPLATFORM:</span> Returns pending status (0001)</p>
+            <div class="api-box">{
+    <span class="param">"Message"</span>: "Transaction pending. Expect callback request for final state",
+    <span class="param">"ResponseCode"</span>: "0001",
+    <span class="param">"Data"</span>: {
+        <span class="param">"TransactionId"</span>: "09f84e20a283942e807128e8c21d08d6",
+        <span class="param">"ClientReference"</span>: "WL-aB3xK9m2-1k3f7z",
+        <span class="param">"Amount"</span>: 100.00,
+        <span class="param">"Charges"</span>: 2.50
+    }
+}</div>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">4</div>
+        <div class="step-content">
+            <p><span class="actor">Hubtel → Parent:</span> Parent receives a mobile money prompt on their phone to approve the payment</p>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">5</div>
+        <div class="step-content">
+            <p><span class="actor">Hubtel → EDUPLATFORM:</span> Sends callback with final payment status</p>
+            <div class="api-box"><span class="method">POST</span> <span class="url">https://your-app.com/api/wallet/hubtel-webhook</span>
+{
+    <span class="param">"ResponseCode"</span>: "0000",
+    <span class="param">"Message"</span>: "success",
+    <span class="param">"Data"</span>: {
+        <span class="param">"ClientReference"</span>: "WL-aB3xK9m2-1k3f7z",
+        <span class="param">"TransactionId"</span>: "09f84e20a283942e807128e8c21d08d6",
+        <span class="param">"Amount"</span>: 100.00,
+        <span class="param">"Charges"</span>: 2.50,
+        <span class="param">"AmountAfterCharges"</span>: 100.00,
+        <span class="param">"PaymentDate"</span>: "2026-07-17T00:44:57.514Z"
+    }
+}</div>
+        </div>
+    </div>
+    <div class="flow-step">
+        <div class="step-number">6</div>
+        <div class="step-content">
+            <p><span class="actor">EDUPLATFORM:</span> Credits student wallet balance → Returns 200 OK to Hubtel</p>
+        </div>
+    </div>
+</div>
+
+<h2>5. Transaction Status Check</h2>
 <p style="font-size: 14px; line-height: 1.8; margin-bottom: 10px;">
     If no callback is received within 5 minutes, EDUPLATFORM performs a mandatory status check:
 </p>
@@ -171,18 +248,18 @@
     }
 }</div>
 
-<h2>5. Payment Methods Supported</h2>
+<h2>6. Payment Methods Supported</h2>
 <table>
     <tr><th>Method</th><th>Channel</th><th>Status</th></tr>
     <tr><td>MTN Mobile Money</td><td>mtn-gh</td><td><span class="badge badge-success">Supported</span></td></tr>
     <tr><td>Vodafone Cash</td><td>vodafone-gh</td><td><span class="badge badge-success">Supported</span></td></tr>
-    <tr><td>AirtelTigo Money</td><td>airteltigo-gh</td><td><span class="badge badge-success">Supported</span></td></tr>
+    <tr><td>AirtelTigo Money</td><td>tigo-gh</td><td><span class="badge badge-success">Supported</span></td></tr>
     <tr><td>Bank Card</td><td>card</td><td><span class="badge badge-success">Supported</span></td></tr>
     <tr><td>GhQR</td><td>ghqr</td><td><span class="badge badge-success">Supported</span></td></tr>
     <tr><td>Hubtel Wallet</td><td>hubtel</td><td><span class="badge badge-success">Supported</span></td></tr>
 </table>
 
-<h2>6. Webhook Implementation</h2>
+<h2>7. Webhook Implementation</h2>
 <table>
     <tr><th>Endpoint</th><th>Purpose</th><th>Triggered By</th></tr>
     <tr><td><code>POST /api/wallet/hubtel-webhook</code></td><td>Wallet top-up callback</td><td>Hubtel payment completion</td></tr>
@@ -190,7 +267,7 @@
     <tr><td><code>GET /api/hubtel/status/:ref</code></td><td>Transaction status check</td><td>Manual check or auto after 5 min</td></tr>
 </table>
 
-<h2>7. Error Handling</h2>
+<h2>8. Error Handling</h2>
 <table>
     <tr><th>Response Code</th><th>Description</th><th>EDUPLATFORM Action</th></tr>
     <tr><td><span class="badge badge-success">0000</span></td><td>Success</td><td>Credit wallet / activate subscription</td></tr>
@@ -199,7 +276,7 @@
     <tr><td><span class="badge badge-info">0005</span></td><td>HTTP failure reaching payment partner</td><td>Perform transaction status check</td></tr>
 </table>
 
-<h2>8. Frontend URLs</h2>
+<h2>9. Frontend URLs</h2>
 <table>
     <tr><th>Page</th><th>URL</th></tr>
     <tr><td>EDUPLATFORM Landing Page</td><td>https://school-saas-fawn.vercel.app</td></tr>
@@ -208,7 +285,7 @@
     <tr><td>Payment Settings</td><td>https://school-saas-fawn.vercel.app/settings</td></tr>
 </table>
 
-<h2>9. Contact Information</h2>
+<h2>10. Contact Information</h2>
 <table>
     <tr><th>Role</th><th>Details</th></tr>
     <tr><td>Company</td><td>EDUPLATFORM SOFTWARE SERVICES</td></tr>
@@ -219,6 +296,7 @@
 
 <div class="note">
     <strong>Note:</strong> This document is prepared for Hubtel UAT (User Acceptance Testing) review. 
+    EDUPLATFORM uses both the Online Checkout API (for subscription payments) and the Direct Receive Money API (for wallet top-ups).
     All webhook endpoints are live and ready to receive callbacks. Transaction status check is implemented 
     and will be used as a fallback if no callback is received within 5 minutes.
 </div>

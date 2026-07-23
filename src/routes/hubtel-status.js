@@ -7,9 +7,9 @@ const router = Router();
 
 const HUBTEL_STATUS_URL = 'https://api-txnstatus.hubtel.com/transactions';
 
-function checkTransactionStatus(merchantAccount, clientReference, authHeader) {
+function checkTransactionStatus(collectionAccount, clientReference, authHeader) {
   return new Promise((resolve, reject) => {
-    const url = `${HUBTEL_STATUS_URL}/${merchantAccount}/status?clientReference=${encodeURIComponent(clientReference)}`;
+    const url = `${HUBTEL_STATUS_URL}/${collectionAccount}/status?clientReference=${encodeURIComponent(clientReference)}`;
     const parsed = new URL(url);
     const options = {
       hostname: parsed.hostname,
@@ -25,7 +25,8 @@ function checkTransactionStatus(merchantAccount, clientReference, authHeader) {
       res.on('data', (c) => body += c);
       res.on('end', () => {
         try {
-          resolve(JSON.parse(body));
+          const parsed = JSON.parse(body);
+          resolve(parsed);
         } catch {
           resolve({ message: body });
         }
@@ -46,16 +47,16 @@ router.get('/status/:clientReference', authenticate, requireRole('headteacher', 
 
     const clientId = school.hubtelClientId || process.env.HUBTEL_CLIENT_ID;
     const clientSecret = school.hubtelClientSecret || process.env.HUBTEL_CLIENT_SECRET;
-    const merchantAccount = school.hubtelMerchantAccount || process.env.HUBTEL_MERCHANT_ACCOUNT;
+    const collectionAccount = school.hubtelMerchantAccount || process.env.HUBTEL_MERCHANT_ACCOUNT;
 
-    if (!clientId || !clientSecret || !merchantAccount) {
+    if (!clientId || !clientSecret || !collectionAccount) {
       return res.status(400).json({ error: 'Hubtel credentials not configured' });
     }
 
     const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
     const authHeader = `Basic ${auth}`;
 
-    const result = await checkTransactionStatus(merchantAccount, clientReference, authHeader);
+    const result = await checkTransactionStatus(collectionAccount, clientReference, authHeader);
     res.json(result);
   } catch (err) {
     console.error('Status check error:', err);
@@ -73,16 +74,16 @@ router.get('/status-all/:clientReference', authenticate, requireRole('headteache
 
     const clientId = school.hubtelClientId || process.env.HUBTEL_CLIENT_ID;
     const clientSecret = school.hubtelClientSecret || process.env.HUBTEL_CLIENT_SECRET;
-    const merchantAccount = school.hubtelMerchantAccount || process.env.HUBTEL_MERCHANT_ACCOUNT;
+    const collectionAccount = school.hubtelMerchantAccount || process.env.HUBTEL_MERCHANT_ACCOUNT;
 
-    if (!clientId || !clientSecret || !merchantAccount) {
+    if (!clientId || !clientSecret || !collectionAccount) {
       return res.status(400).json({ error: 'Hubtel credentials not configured' });
     }
 
     const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
     const authHeader = `Basic ${auth}`;
 
-    const result = await checkTransactionStatus(merchantAccount, clientReference, authHeader);
+    const result = await checkTransactionStatus(collectionAccount, clientReference, authHeader);
     res.json(result);
   } catch (err) {
     console.error('Status check error:', err);

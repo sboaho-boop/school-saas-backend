@@ -4,6 +4,7 @@ const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { sendSubscriptionAlert } = require('../lib/sms');
 const { createCheckout } = require('../lib/hubtel-payment');
+const { directReceiveMoney } = require('../lib/hubtel-direct-receive');
 
 const PLANS = {
   free: { name: 'Starter', studentLimit: 100, staffLimit: 10, priceId: null, amount: 0 },
@@ -39,7 +40,7 @@ router.get('/subscription', authenticate, async (req, res) => {
 
 router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async (req, res) => {
   try {
-    const { plan } = req.body;
+    const { plan, phone, channel } = req.body;
     if (!PLANS[plan]) return res.status(400).json({ error: 'Invalid plan' });
     if (PLANS[plan].amount === 0) {
       const limits = PLANS[plan];
@@ -54,6 +55,31 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
     }
     const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
     const reference = crypto.randomBytes(12).toString('hex');
+
+    if (phone && channel) {
+      const amount = PLANS[plan].amount / 100;
+      const result = await directReceiveMoney({
+        customerName: req.user.name || req.user.email,
+        customerMsisdn: phone,
+        customerEmail: req.user.email,
+        channel,
+        amount,
+        description: `${PLANS[plan].name} subscription for EDUPLATFORM`,
+        clientReference: `SUB-${reference.slice(0, 24)}`,
+        callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/billing/hubtel-webhook`,
+        schoolCredentials: school,
+      });
+      if (result.ResponseCode !== '0001') {
+        return res.status(400).json({ error: result.Message || 'Payment initiation failed', code: result.ResponseCode });
+      }
+      await prisma.subscription.upsert({
+        where: { schoolId: req.schoolId },
+        update: { pendingPlan: plan, pendingCheckoutRef: `SUB-${reference.slice(0, 24)}` },
+        create: { schoolId: req.schoolId, pendingPlan: plan, pendingCheckoutRef: `SUB-${reference.slice(0, 24)}` },
+      });
+      return res.json({ message: 'Payment prompt sent. Approve to complete.', reference: `SUB-${reference.slice(0, 24)}` });
+    }
+
     const checkout = await createCheckout({
       amount: PLANS[plan].amount,
       title: `EDUPLATFORM SOFTWARE SERVICES ${PLANS[plan].name} Plan`,
@@ -81,9 +107,12 @@ router.post('/hubtel-webhook', async (req, res) => {
     const data = req.body.Data || req.body;
     const ClientReference = data.ClientReference || data.OrderId;
     const Status = data.Status || data.Message;
+    const ResponseCode = data.ResponseCode;
     console.log('Billing webhook received:', JSON.stringify(req.body));
     if (!ClientReference) return res.status(400).json({ error: 'Missing ClientReference' });
-    if (Status !== 'Success' && Status !== 'success') return res.status(200).json({ message: 'Payment not successful' });
+    if (ResponseCode !== '0000' && Status !== 'Success' && Status !== 'success') {
+      return res.status(200).json({ message: 'Payment not successful', ResponseCode, Status });
+    }
     const sub = await prisma.subscription.findFirst({ where: { pendingCheckoutRef: ClientReference } });
     if (!sub || !sub.pendingPlan) return res.status(200).json({ message: 'No pending subscription found' });
     const limits = PLANS[sub.pendingPlan];
