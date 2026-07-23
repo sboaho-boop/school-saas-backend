@@ -2,7 +2,7 @@ const { Router } = require('express');
 const crypto = require('crypto');
 const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
-const { preapprovalInitiate, preapprovalVerifyOtp, preapprovalStatus, preapprovalCancel, directDebitCharge, DIRECT_DEBIT_CHANNELS } = require('../lib/hubtel-direct-debit');
+const { preapprovalInitiate, preapprovalVerifyOtp, preapprovalStatus, preapprovalCancel, preapprovalReactivate, directDebitCharge, DIRECT_DEBIT_CHANNELS } = require('../lib/hubtel-direct-debit');
 
 const router = Router();
 
@@ -151,6 +151,37 @@ router.get('/preapproval/cancel/:phone', authenticate, async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('Preapproval cancel error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/preapproval/reactivate', authenticate, async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ error: 'Phone required' });
+
+    const normalizedPhone = phone.replace(/[^0-9]/g, '');
+    const msisdn = normalizedPhone.startsWith('233') ? normalizedPhone : `233${normalizedPhone.replace(/^0/, '')}`;
+
+    const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
+    if (!school) return res.status(404).json({ error: 'School not found' });
+
+    const result = await preapprovalReactivate({
+      phone: msisdn,
+      callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/direct-debit/preapproval-webhook`,
+      schoolCredentials: school,
+    });
+
+    if (result.responseCode === '2000') {
+      await prisma.directDebitPreapproval.updateMany({
+        where: { schoolId: req.schoolId, phone: msisdn },
+        data: { preapprovalStatus: 'PENDING', hubtelPreApprovalId: result.data?.hubtelPreApprovalId || undefined },
+      });
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('Preapproval reactivate error:', err);
     res.status(500).json({ error: err.message });
   }
 });

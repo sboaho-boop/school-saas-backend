@@ -244,11 +244,59 @@ function directDebitCharge({ customerName, customerMsisdn, customerEmail, channe
   });
 }
 
+function preapprovalReactivate({ phone, callbackUrl, schoolCredentials }) {
+  return new Promise((resolve, reject) => {
+    const clientId = schoolCredentials?.hubtelClientId || process.env.HUBTEL_CLIENT_ID || '';
+    const clientSecret = schoolCredentials?.hubtelClientSecret || process.env.HUBTEL_CLIENT_SECRET || '';
+    const collectionAccount = schoolCredentials?.hubtelMerchantAccount || process.env.HUBTEL_MERCHANT_ACCOUNT || '';
+
+    if (!clientId || !clientSecret || !collectionAccount) {
+      return reject(new Error('Hubtel credentials not configured'));
+    }
+
+    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+    const payload = JSON.stringify({
+      callbackUrl: callbackUrl || `${BASE_URL}/api/direct-debit/preapproval-webhook`,
+      customerMsisdn: phone,
+    });
+
+    const url = `https://preapproval.hubtel.com/api/v2/merchant/${collectionAccount}/preapproval/reactivate`;
+    const parsed = new URL(url);
+
+    const options = {
+      hostname: parsed.hostname,
+      path: parsed.pathname,
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (c) => body += c);
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(body));
+        } catch {
+          reject(new Error(`Hubtel response: ${body}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
 module.exports = {
   preapprovalInitiate,
   preapprovalVerifyOtp,
   preapprovalStatus,
   preapprovalCancel,
+  preapprovalReactivate,
   directDebitCharge,
   DIRECT_DEBIT_CHANNELS,
 };
