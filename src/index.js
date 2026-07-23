@@ -61,6 +61,7 @@ const compactReportRoutes = require('./routes/compact-report');
 const repaymentHistoryRoutes = require('./routes/repayment-history');
 const sendMoneyRoutes = require('./routes/send-money');
 const ussdRoutes = require('./routes/ussd');
+const prisma = require('./lib/prisma');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
