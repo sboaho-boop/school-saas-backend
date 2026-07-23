@@ -890,9 +890,16 @@ model Submission {
 }
 
 model PrivacyConsent {
-  id      String @id @default(cuid())
-  schoolId String
-  school  School @relation(fields: [schoolId], references: [id])
+  id        String   @id @default(cuid())
+  schoolId  String
+  userId    String?
+  type      String   @default("privacy_policy")
+  version   String   @default("1.0")
+  ip        String   @default("")
+  userAgent String   @default("")
+  createdAt DateTime @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
 }
 
 model AIConversation {
