@@ -60,6 +60,7 @@ const consumerProfileRoutes = require('./routes/consumer-profile');
 const compactReportRoutes = require('./routes/compact-report');
 const repaymentHistoryRoutes = require('./routes/repayment-history');
 const sendMoneyRoutes = require('./routes/send-money');
+const ussdRoutes = require('./routes/ussd');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -138,6 +139,7 @@ app.use('/api/consumer-profile', consumerProfileRoutes);
 app.use('/api/compact-report', compactReportRoutes);
 app.use('/api/repayment-history', repaymentHistoryRoutes);
 app.use('/api/send-money', sendMoneyRoutes);
+app.use('/api/ussd', ussdRoutes);
 
 const path = require('path');
 const fs = require('fs');
