@@ -98,7 +98,7 @@ router.post('/verify', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'recurringInvoiceId, requestId, and otpCode required' });
     }
 
-    const result = await verifyInvoice({ recurringInvoiceId, requestId, otpCode });
+    const result = await verifyInvoice({ recurringInvoiceId, requestId, otpCode, schoolCredentials: await prisma.school.findUnique({ where: { id: req.schoolId } }) });
 
     if (result.responseCode !== '0001') {
       return res.status(400).json({ error: result.message || 'Verification failed', code: result.responseCode });

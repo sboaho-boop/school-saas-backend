@@ -74,9 +74,12 @@ function createInvoice({
   });
 }
 
-function verifyInvoice({ recurringInvoiceId, requestId, otpCode }) {
+function verifyInvoice({ recurringInvoiceId, requestId, otpCode, schoolCredentials }) {
   return new Promise((resolve, reject) => {
-    const auth = Buffer.from(`${process.env.HUBTEL_CLIENT_ID || ''}:${process.env.HUBTEL_CLIENT_SECRET || ''}`).toString('base64');
+    const clientId = schoolCredentials?.hubtelClientId || process.env.HUBTEL_CLIENT_ID || '';
+    const clientSecret = schoolCredentials?.hubtelClientSecret || process.env.HUBTEL_CLIENT_SECRET || '';
+
+    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
     const payload = JSON.stringify({
       recurringInvoiceId,
