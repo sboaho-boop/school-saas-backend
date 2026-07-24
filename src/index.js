@@ -65,7 +65,7 @@ const prisma = require('./lib/prisma');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,https://school-saas-fawn.vercel.app').split(',');
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,https://eduplatformsoftware.com,https://www.eduplatformsoftware.com').split(',');
 
 app.use(helmet());
 app.use(cors({
