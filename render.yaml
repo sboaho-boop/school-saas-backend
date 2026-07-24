@@ -9,8 +9,10 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        value: file:./dev.db
+        sync: false
+      - key: DIRECT_URL
+        sync: false
       - key: JWT_SECRET
-        generateValue: true
+        sync: false
       - key: BASE_URL
         sync: false
