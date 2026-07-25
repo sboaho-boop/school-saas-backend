@@ -62,8 +62,7 @@ router.post('/register', async (req, res) => {
     });
 
     const via = {};
-    const emailRes = await sendOtpEmail(user.email, user.name, otp);
-    if (emailRes.success) via.email = true;
+    sendOtpEmail(user.email, user.name, otp).then((emailRes) => { if (emailRes.success) console.log(`Email OTP sent to ${user.email}`); else console.log('Email skipped:', emailRes.reason || emailRes.skipped); }).catch(() => {});
     const smsRes = user.phone ? await sendSms(user.phone, `EDUPLATFORM SOFTWARE SERVICES: Your verification code is ${otp}. Expires in 15 minutes.`) : { skipped: true };
     if (smsRes.success) via.sms = true;
 
@@ -74,7 +73,7 @@ router.post('/register', async (req, res) => {
     res.status(201).json({
       message: 'Account created! Check your email/SMS for a verification code.',
       user: { id: user.id, email: user.email, name: user.name, role: user.role, schoolId: school.id, phone: user.phone, twoFactorEnabled: false, isVerified: false },
-      verification: { otp, sentVia: via, expiresAt: expiry.toISOString(), message: !via.email && !via.sms ? 'No email/SMS configured. Your code is: ' + otp : 'Verification code sent.' },
+      verification: { otp, sentVia: via, expiresAt: expiry.toISOString(), message: 'Verification code generated.' },
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
