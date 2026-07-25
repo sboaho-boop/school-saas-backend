@@ -65,15 +65,19 @@ const prisma = require('./lib/prisma');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,https://eduplatformsoftware.com,https://www.eduplatformsoftware.com').split(',');
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,https://school-saas-fawn.vercel.app,https://eduplatformsoftware.com,https://www.eduplatformsoftware.com').split(',').map(s => s.trim());
 
 app.use(helmet());
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    if (!origin) return cb(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    console.log('CORS blocked origin:', origin, 'Allowed:', ALLOWED_ORIGINS);
     cb(null, false);
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '1mb' }));
