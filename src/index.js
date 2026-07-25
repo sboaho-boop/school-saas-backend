@@ -170,11 +170,11 @@ app.listen(PORT, async () => {
   console.log(`EDUPLATFORM SOFTWARE SERVICES API running on http://localhost:${PORT}`);
   try {
     const bcrypt = require('bcryptjs');
-    const existing = await prisma.superAdmin.findUnique({ where: { email: 'super@eduplatform.com' } });
+    const existing = await prisma.superAdmin.findUnique({ where: { email: 'sboaho@gmail.com' } });
     if (!existing) {
       const hash = await bcrypt.hash('superadmin123', 10);
-      await prisma.superAdmin.create({ data: { email: 'super@eduplatform.com', password: hash, name: 'Super Admin', role: 'owner' } });
-      console.log('Super admin created: super@eduplatform.com / superadmin123');
+      await prisma.superAdmin.create({ data: { email: 'sboaho@gmail.com', password: hash, name: 'Christopher Boakye', role: 'owner' } });
+      console.log('Super admin created: sboaho@gmail.com / superadmin123');
     }
   } catch (e) { console.error('Super admin seed error:', e.message); }
 });
