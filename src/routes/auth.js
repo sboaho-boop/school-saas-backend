@@ -193,7 +193,23 @@ router.post('/forgot-password', async (req, res) => {
     const expiresAt = new Date(Date.now() + 3600000);
     await prisma.passwordResetToken.create({ data: { email, token, expiresAt } });
 
-    res.json({ message: 'If that email exists, a reset link has been sent.', resetToken: token });
+    const resetUrl = `https://eduplatformsoftware.com/reset-password?token=${token}`;
+    const { sendEmail } = require('../lib/email');
+    sendEmail(email, 'EDUPLATFORM SOFTWARE SERVICES - Password Reset', `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+        <h2 style="color:#4f46e5;">EDUPLATFORM SOFTWARE SERVICES</h2>
+        <p>Hi ${user.name},</p>
+        <p>You requested a password reset. Click the button below to set a new password:</p>
+        <div style="text-align:center;margin:24px 0;">
+          <a href="${resetUrl}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Reset Password</a>
+        </div>
+        <p>Or copy this link: <a href="${resetUrl}">${resetUrl}</a></p>
+        <p>This link expires in <strong>1 hour</strong>.</p>
+        <p>If you didn't request this, ignore this email.</p>
+      </div>
+    `).catch(() => {});
+
+    res.json({ message: 'If that email exists, a reset link has been sent.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
