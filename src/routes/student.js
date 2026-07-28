@@ -43,17 +43,47 @@ router.get('/dashboard', authenticateStudent, async (req, res) => {
       include: {
         wallet: { include: { transactions: { orderBy: { createdAt: 'desc' }, take: 20 } } },
         attendanceRecs: { orderBy: { date: 'desc' }, take: 30 },
-        grades: { orderBy: { createdAt: 'desc' }, take: 50 },
+        grades: {
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: { subject: { select: { name: true } } },
+        },
       },
     });
     if (!student) return res.status(404).json({ error: 'Student not found' });
+    // Get class teacher
+    const classGroup = await prisma.academicClass.findFirst({
+      where: { id: student.classId, schoolId: student.schoolId },
+      select: { teacherName: true },
+    });
+    // Attendance stats
+    const totalDays = student.attendanceRecs.length;
+    const presentDays = student.attendanceRecs.filter(a => a.status === 'present').length;
+    const absentDays = student.attendanceRecs.filter(a => a.status === 'absent').length;
+    const lateDays = student.attendanceRecs.filter(a => a.status === 'late').length;
+    // Grade stats
+    const avgScore = student.grades.length > 0
+      ? Math.round(student.grades.reduce((s, g) => s + g.score, 0) / student.grades.length)
+      : null;
     res.json({
       name: `${student.firstName} ${student.lastName}`,
       className: student.className,
+      indexNumber: student.indexNumber,
+      photoUrl: student.photoUrl,
+      classTeacher: classGroup?.teacherName || null,
       wallet: student.wallet ? { balance: student.wallet.balance, totalSpent: student.wallet.totalSpent, frozen: student.wallet.frozen } : null,
       transactions: student.wallet?.transactions || [],
       attendance: student.attendanceRecs,
-      grades: student.grades,
+      attendanceStats: { total: totalDays, present: presentDays, absent: absentDays, late: lateDays },
+      grades: student.grades.map(g => ({
+        id: g.id,
+        score: g.score,
+        grade: g.grade,
+        components: g.components,
+        remarks: g.remarks,
+        subjectName: g.subject?.name || 'Unknown',
+      })),
+      avgScore,
     });
   } catch (err) {
     res.status(400).json({ error: err.message });
