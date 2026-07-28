@@ -55,7 +55,7 @@ router.get('/dashboard', authenticateStudent, async (req, res) => {
     // Get class teacher
     const classGroup = await prisma.academicClass.findFirst({
       where: { id: student.classId, schoolId: student.schoolId },
-      select: { teacherName: true },
+      select: { teacher: true },
     });
     // Attendance stats
     const totalDays = student.attendanceRecs.length;
@@ -71,7 +71,7 @@ router.get('/dashboard', authenticateStudent, async (req, res) => {
       className: student.className,
       indexNumber: student.indexNumber,
       photoUrl: student.photoUrl,
-      classTeacher: classGroup?.teacherName || null,
+      classTeacher: classGroup?.teacher || null,
       wallet: student.wallet ? { balance: student.wallet.balance, totalSpent: student.wallet.totalSpent, frozen: student.wallet.frozen } : null,
       transactions: student.wallet?.transactions || [],
       attendance: student.attendanceRecs,
