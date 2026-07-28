@@ -2,7 +2,7 @@ const { Router } = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
-const { sendOtpEmail } = require('../lib/email');
+const { sendEmail, sendOtpEmail } = require('../lib/email');
 
 const router = Router();
 
@@ -404,6 +404,27 @@ router.post('/feedback', async (req, res) => {
     if (school) name = school.name;
   }
   const fb = await prisma.feedback.create({ data: { schoolId, userId, userName, userEmail, schoolName: name || '', subject, message } });
+
+  // Notify super admin
+  const adminEmails = await prisma.superAdmin.findMany({ select: { email: true } });
+  const recipients = [...new Set(adminEmails.map(a => a.email).filter(Boolean))];
+  if (recipients.length > 0) {
+    const html = `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+        <h2 style="color:#4f46e5;">New Feedback Received</h2>
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:8px 0;color:#6b7280;">From</td><td style="padding:8px 0;"><strong>${userName || 'Unknown'}</strong> (${userEmail || 'no email'})</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;">School</td><td style="padding:8px 0;"><strong>${name || 'Unknown'}</strong></td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280;">Subject</td><td style="padding:8px 0;"><strong>${subject}</strong></td></tr>
+        </table>
+        <div style="background:#f3f4f6;border-radius:8px;padding:16px;margin-top:12px;white-space:pre-wrap;">${message}</div>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;">
+        <p style="color:#9ca3af;font-size:12px;">Reply to this feedback from the <a href="https://eduplatformsoftware.com/super-admin/dashboard" style="color:#4f46e5;">Super Admin Dashboard</a>.</p>
+      </div>
+    `;
+    sendEmail(recipients.join(','), `[Feedback] ${subject}`, html);
+  }
+
   res.status(201).json(fb);
 });
 
