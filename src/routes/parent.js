@@ -74,7 +74,7 @@ router.get('/children/:id', authenticateParent, async (req, res) => {
     include: {
       wallet: { include: { transactions: { orderBy: { createdAt: 'desc' }, take: 50 } } },
       attendanceRecs: { orderBy: { date: 'desc' }, take: 30 },
-      grades: { include: { student: true }, orderBy: { createdAt: 'desc' }, take: 50 },
+      grades: { include: { student: true, subject: { select: { id: true, name: true } } }, orderBy: { createdAt: 'desc' }, take: 50 },
     },
   });
   if (!student) return res.status(404).json({ error: 'Student not found' });

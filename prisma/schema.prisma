@@ -343,6 +343,7 @@ model Subject {
 
   school School        @relation(fields: [schoolId], references: [id])
   class  AcademicClass @relation(fields: [classId], references: [id])
+  grades Grade[]
 }
 
 model Term {
@@ -401,6 +402,7 @@ model Grade {
 
   school  School  @relation(fields: [schoolId], references: [id])
   student Student @relation(fields: [studentId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
 }
 
 model Message {
@@ -482,8 +484,8 @@ model StudentWallet {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  school       School        @relation(fields: [schoolId], references: [id])
-  student      Student       @relation(fields: [studentId], references: [id])
+  school  School  @relation(fields: [schoolId], references: [id])
+  student Student @relation(fields: [studentId], references: [id])
   transactions Transaction[]
 
   @@unique([schoolId, cardUid])
