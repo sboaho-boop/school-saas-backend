@@ -10,12 +10,21 @@ const { generateStudentIndexNumber } = require('../lib/index-number');
 const router = Router();
 router.use(authenticate);
 
+function parseClasses(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') { try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch {} }
+  return [];
+}
+
 router.get('/', async (req, res) => {
   const where = { schoolId: req.schoolId };
-  if (req.staff && req.staff.staffType === 'teaching' && req.staff.assignedClass) {
-    const cls = await prisma.academicClass.findFirst({ where: { name: req.staff.assignedClass, schoolId: req.schoolId } });
-    if (cls) where.classId = cls.id;
-    else return res.json([]);
+  if (req.staff && req.staff.staffType === 'teaching') {
+    const classes = parseClasses(req.staff.assignedClasses);
+    if (classes.length > 0) {
+      const found = await prisma.academicClass.findMany({ where: { name: { in: classes }, schoolId: req.schoolId } });
+      if (found.length > 0) where.classId = { in: found.map(c => c.id) };
+      else return res.json([]);
+    }
   }
   const students = await prisma.student.findMany({ where, orderBy: { createdAt: 'desc' } });
   res.json(students);

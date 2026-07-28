@@ -211,7 +211,7 @@ model Staff {
   role             String
   department       String
   staffType        String
-  assignedClass    String?
+  assignedClasses   String   @default("[]")
   assignedSubjects String   @default("[]")
   assignedRouteId  String?
   assignedRouteName String?

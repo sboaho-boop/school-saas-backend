@@ -81,7 +81,7 @@ router.post('/staff', requireRole('headteacher', 'admin'), checkPlanLimit('staff
           role: r.role || 'Staff',
           department: r.department || '',
           staffType: r.staffType || 'non-teaching',
-          assignedClass: r.assignedClass || null,
+          assignedClasses: r.assignedClasses ? JSON.stringify(r.assignedClasses) : '[]',
           assignedSubjects: r.assignedSubjects ? JSON.stringify(r.assignedSubjects) : '[]',
           status: r.status || 'active',
           hireDate: r.hireDate || new Date().toISOString().split('T')[0],

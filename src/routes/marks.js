@@ -23,15 +23,24 @@ function scoreToGrade(total) {
 const router = Router();
 router.use(authenticate);
 
+function parseClasses(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') { try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch {} }
+  return [];
+}
+
 // GET /api/marks?classId=&subjectId=&termId=
 router.get('/', async (req, res) => {
   const { classId, subjectId, termId } = req.query;
   const where = { schoolId: req.schoolId };
   if (classId) where.classId = classId;
-  else if (req.staff && req.staff.staffType === 'teaching' && req.staff.assignedClass) {
-    const cls = await prisma.academicClass.findFirst({ where: { name: req.staff.assignedClass, schoolId: req.schoolId } });
-    if (cls) where.classId = cls.id;
-    else return res.json([]);
+  else if (req.staff && req.staff.staffType === 'teaching') {
+    const classes = parseClasses(req.staff.assignedClasses);
+    if (classes.length > 0) {
+      const found = await prisma.academicClass.findMany({ where: { name: { in: classes }, schoolId: req.schoolId } });
+      if (found.length > 0) where.classId = { in: found.map(c => c.id) };
+      else return res.json([]);
+    }
   }
   if (subjectId) where.subjectId = subjectId;
   if (termId) where.termId = termId;
@@ -51,9 +60,12 @@ router.post('/', async (req, res) => {
       if (active) termId = active.id;
       else return res.status(400).json({ error: 'No active term found' });
     }
-    if (req.staff && req.staff.staffType === 'teaching' && req.staff.assignedClass) {
-      const cls = await prisma.academicClass.findFirst({ where: { name: req.staff.assignedClass, schoolId: req.schoolId } });
-      if (cls && classId !== cls.id) return res.status(403).json({ error: 'Not your assigned class' });
+    if (req.staff && req.staff.staffType === 'teaching') {
+      const classes = parseClasses(req.staff.assignedClasses);
+      if (classes.length > 0) {
+        const found = await prisma.academicClass.findMany({ where: { name: { in: classes }, schoolId: req.schoolId } });
+        if (found.length > 0 && !found.find(c => c.id === classId)) return res.status(403).json({ error: 'Not your assigned class' });
+      } else return res.status(403).json({ error: 'No classes assigned' });
     }
 
     if (components && typeof components === 'object') {

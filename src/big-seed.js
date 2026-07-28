@@ -171,7 +171,7 @@ async function main() {
         role: t % 2 === 0 ? 'Class Teacher' : 'Subject Teacher',
         department: 'Academics',
         staffType: 'teaching',
-        assignedClass: t < 20 ? cls.name : undefined,
+        assignedClasses: t < 20 ? JSON.stringify([cls.name]) : '[]',
         assignedSubjects: assignedSubjects,
         assignedRouteId: t % 2 === 0 ? routes[0].id : undefined,
         assignedRouteName: t % 2 === 0 ? routes[0].name : undefined,

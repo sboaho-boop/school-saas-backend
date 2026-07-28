@@ -19,7 +19,9 @@ function generateOtp() {
 function parseStaff(s) {
   let subjects = s.assignedSubjects;
   if (typeof subjects === 'string') { try { subjects = JSON.parse(subjects); } catch { subjects = []; } }
-  return { ...s, assignedSubjects: subjects, campusId: s.campus?.id || null, campusName: s.campus?.name || null, campus: undefined };
+  let classes = s.assignedClasses;
+  if (typeof classes === 'string') { try { classes = JSON.parse(classes); } catch { classes = []; } }
+  return { ...s, assignedSubjects: subjects, assignedClasses: classes, campusId: s.campus?.id || null, campusName: s.campus?.name || null, campus: undefined };
 }
 
 router.get('/', async (req, res) => {
@@ -54,6 +56,7 @@ router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('staff'), a
     const indexNumber = await generateStaffIndexNumber(req.schoolId);
     const data = { ...req.body, indexNumber, schoolId: req.schoolId };
     if (data.assignedSubjects) data.assignedSubjects = JSON.stringify(data.assignedSubjects);
+    if (data.assignedClasses) data.assignedClasses = JSON.stringify(data.assignedClasses);
     const member = await prisma.staff.create({ data });
 
     const tempPassword = crypto.randomBytes(12).toString('hex');
@@ -108,6 +111,7 @@ router.put('/:id', requireRole('headteacher', 'admin'), async (req, res) => {
     }
     const data = { ...req.body };
     if (data.assignedSubjects) data.assignedSubjects = JSON.stringify(data.assignedSubjects);
+    if (data.assignedClasses) data.assignedClasses = JSON.stringify(data.assignedClasses);
     const member = await prisma.staff.update({ where: { id: req.params.id }, data });
     await logAudit(req, 'update', 'staff', member.id, { updates: Object.keys(req.body) });
     res.json(parseStaff(member));

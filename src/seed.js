@@ -215,8 +215,8 @@ async function main() {
       { name: `Head ${name}`, email: `headteacher${userSuffix}`, phone: '+233201111111', role: 'Head Teacher', department: 'Administration', staffType: 'headteacher' },
       { name: `Admin ${name}`, email: `admin${userSuffix}`, phone: '+233202222222', role: 'Administrator', department: 'Administration', staffType: 'admin' },
       { name: `Accountant ${name}`, email: `accountant${userSuffix}`, phone: '+233203333333', role: 'Accountant', department: 'Finance', staffType: 'accountant' },
-      { name: `Teacher A ${name}`, email: `teacher1${userSuffix}`, phone: '+233204444444', role: 'Class Teacher', department: 'Academics', staffType: 'teaching', assignedClass: createdClasses[0].name, assignedSubjects: JSON.stringify(['English', 'Mathematics']), assignedRouteId: routes[0].id, assignedRouteName: routes[0].name },
-      { name: `Teacher B ${name}`, email: `teacher2${userSuffix}`, phone: '+233205555555', role: 'Subject Teacher', department: 'Academics', staffType: 'teaching', assignedClass: createdClasses[1].name, assignedSubjects: JSON.stringify(['Science', 'Mathematics']), assignedRouteId: routes[1].id, assignedRouteName: routes[1].name },
+      { name: `Teacher A ${name}`, email: `teacher1${userSuffix}`, phone: '+233204444444', role: 'Class Teacher', department: 'Academics', staffType: 'teaching', assignedClasses: JSON.stringify([createdClasses[0].name]), assignedSubjects: JSON.stringify(['English', 'Mathematics']), assignedRouteId: routes[0].id, assignedRouteName: routes[0].name },
+      { name: `Teacher B ${name}`, email: `teacher2${userSuffix}`, phone: '+233205555555', role: 'Subject Teacher', department: 'Academics', staffType: 'teaching', assignedClasses: JSON.stringify([createdClasses[1].name]), assignedSubjects: JSON.stringify(['Science', 'Mathematics']), assignedRouteId: routes[1].id, assignedRouteName: routes[1].name },
       { name: `Staff ${name}`, email: `nont${userSuffix}`, phone: '+233206666666', role: 'Librarian', department: 'Support', staffType: 'non-teaching' },
     ];
     for (let si = 0; si < staffMembers.length; si++) {

@@ -5,11 +5,18 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const router = Router();
 router.use(authenticate);
 
+function parseClasses(val) {
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') { try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch {} }
+  return [];
+}
+
 router.get('/', async (req, res) => {
   try {
     const where = { schoolId: req.schoolId };
-    if (req.staff && req.staff.staffType === 'teaching' && req.staff.assignedClass) {
-      where.classId = req.staff.assignedClass;
+    if (req.staff && req.staff.staffType === 'teaching') {
+      const classes = parseClasses(req.staff.assignedClasses);
+      if (classes.length > 0) where.classId = { in: classes };
     }
     if (req.query.classId) where.classId = req.query.classId;
     const assignments = await prisma.assignment.findMany({
