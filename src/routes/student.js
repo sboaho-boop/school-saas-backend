@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const bcrypt = require('bcryptjs');
+const OpenAI = require('openai');
 const prisma = require('../lib/prisma');
 const { signToken, verifyToken } = require('../lib/jwt');
 const { authenticate } = require('../middleware/auth');
@@ -171,6 +172,95 @@ router.get('/timetable', authenticateStudent, async (req, res) => {
       orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
     });
     res.json(slots);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ─── Student AI Tutor ──────────────────────────────────────
+
+function getOpenAI() {
+  if (!process.env.OPENAI_API_KEY) return null;
+  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+}
+
+const AI_SYSTEM_PROMPT = `You are "Nova", a friendly AI learning companion for students in Ghana. Your job is to help students with their schoolwork — Mathematics, English, Science, Social Studies, and Ghanaian languages (Twi, Ga, Ewe, Fante, Dagbani).
+
+Rules:
+- Speak in a warm, encouraging tone suitable for children ages 4-16
+- Adapt your language complexity based on the student's class/grade
+- When the student mixes English with a Ghanaian language, respond in the same mix
+- For young children, use simple words, short sentences, and emojis
+- Always be patient — if the student says they don't understand, explain differently
+- NEVER give inappropriate or harmful content
+- Encourage the student when they get something right
+- Correct mistakes gently
+- Relate examples to things Ghanaian children know (market, banku, kelewele, trotro, football, etc.)
+- Follow the Ghanaian curriculum (Basic 1-9, JHS 1-3)
+- For mathematics, show step-by-step working
+- For English, help with reading, grammar, spelling, and pronunciation
+- For science, explain concepts using everyday examples
+- For homework help, guide the student to the answer rather than giving it directly
+- Keep responses concise — maximum 3-4 short paragraphs
+- Use bullet points or numbered steps when explaining multi-step concepts
+
+When you don't know something, say "I'm not sure, but let's find out together!"`;
+
+router.post('/ai/chat', authenticateStudent, async (req, res) => {
+  try {
+    const { message, history } = req.body;
+    if (!message) return res.status(400).json({ error: 'Message required' });
+
+    const student = await prisma.student.findUnique({
+      where: { id: req.studentId },
+      select: { firstName: true, className: true, classId: true },
+    });
+    if (!student) return res.status(404).json({ error: 'Student not found' });
+
+    const studentContext = `Student info: ${student.firstName}, Class: ${student.className || 'Unknown'}`;
+
+    const messages = [
+      { role: 'system', content: `${AI_SYSTEM_PROMPT}\n\n${studentContext}` },
+      ...(history || []).slice(-20),
+      { role: 'user', content: message },
+    ];
+
+    const ai = getOpenAI();
+    if (!ai) return res.status(503).json({ error: 'AI tutor not configured yet. Contact your school administrator.' });
+
+    const completion = await ai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages,
+      max_tokens: 1024,
+      temperature: 0.7,
+    });
+
+    const reply = completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
+
+    await prisma.aIConversation.create({
+      data: {
+        schoolId: req.schoolId,
+        userId: req.studentId,
+        userMessage: message,
+        aiResponse: reply,
+      },
+    }).catch(() => {});
+
+    res.json({ reply });
+  } catch (err) {
+    console.error('Student AI chat error:', err.message);
+    res.status(500).json({ error: err.message || 'AI service unavailable' });
+  }
+});
+
+router.get('/ai/history', authenticateStudent, async (req, res) => {
+  try {
+    const conversations = await prisma.aIConversation.findMany({
+      where: { schoolId: req.schoolId, userId: req.studentId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    res.json(conversations);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
