@@ -439,12 +439,41 @@ router.get('/feedback', requireSuper, loadSuperAdmin, async (req, res) => {
   res.json(feedbacks);
 });
 
+router.get('/feedback/mine', async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ error: 'email query param required' });
+  const feedbacks = await prisma.feedback.findMany({
+    where: { userEmail: email },
+    orderBy: { createdAt: 'desc' },
+    include: { assignedTo: { select: { id: true, name: true, email: true } } }
+  });
+  res.json(feedbacks);
+});
+
 router.put('/feedback/:id', requireSuper, loadSuperAdmin, async (req, res) => {
   const { status, reply } = req.body;
   const data = {};
   if (status) data.status = status;
+  const prev = reply ? await prisma.feedback.findUnique({ where: { id: req.params.id } }) : null;
   if (reply) { data.reply = reply; data.repliedAt = new Date(); data.assignedToId = req.superAdmin.id; }
   const fb = await prisma.feedback.update({ where: { id: req.params.id }, data });
+
+  if (reply && prev && prev.userEmail) {
+    const html = `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+        <h2 style="color:#4f46e5;">Reply to Your Feedback</h2>
+        <p style="color:#6b7280;">Regarding: <strong>${prev.subject}</strong></p>
+        <div style="background:#f3f4f6;border-radius:8px;padding:16px;margin:12px 0;white-space:pre-wrap;">${prev.message}</div>
+        <hr style="border:none;border-top:1px solid #e5e7eb;">
+        <p style="font-weight:600;margin-top:12px;">Reply from ${req.superAdmin.name}:</p>
+        <div style="background:#eef2ff;border-radius:8px;padding:16px;margin:8px 0;white-space:pre-wrap;">${reply}</div>
+        <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;">
+        <p style="color:#9ca3af;font-size:12px;">You can view all your feedback at <a href="https://eduplatformsoftware.com/feedback" style="color:#4f46e5;">eduplatformsoftware.com/feedback</a>.</p>
+      </div>
+    `;
+    sendEmail(prev.userEmail, `Re: ${prev.subject}`, html);
+  }
+
   res.json(fb);
 });
 
