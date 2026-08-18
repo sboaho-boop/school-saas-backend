@@ -397,36 +397,47 @@ router.delete('/admins/:id', requireSuper, loadSuperAdmin, async (req, res) => {
 // ─── Feedback / Reports ──────────────────────────────────────
 
 router.post('/feedback', async (req, res) => {
-  const { schoolId, userId, userName, userEmail, schoolName, subject, message } = req.body;
-  if (!subject || !message) return res.status(400).json({ error: 'subject and message required' });
-  let name = schoolName;
-  if (!name && schoolId) {
-    const school = await prisma.school.findUnique({ where: { id: schoolId }, select: { name: true } });
-    if (school) name = school.name;
-  }
-  const fb = await prisma.feedback.create({ data: { schoolId, userId, userName, userEmail, schoolName: name || '', subject, message } });
+  try {
+    const { schoolId, userId, userName, userEmail, schoolName, subject, message } = req.body;
+    if (!subject || !message) return res.status(400).json({ error: 'subject and message required' });
+    let name = schoolName;
+    const validSchoolId = schoolId || null;
+    const validUserId = userId || null;
+    if (!name && validSchoolId) {
+      const school = await prisma.school.findUnique({ where: { id: validSchoolId }, select: { name: true } });
+      if (school) name = school.name;
+    }
+    const fb = await prisma.feedback.create({ data: { schoolId: validSchoolId, userId: validUserId, userName, userEmail, schoolName: name || '', subject, message } });
 
-  // Notify super admin
-  const adminEmails = await prisma.superAdmin.findMany({ select: { email: true } });
-  const recipients = [...new Set(adminEmails.map(a => a.email).filter(Boolean))];
-  if (recipients.length > 0) {
-    const html = `
-      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
-        <h2 style="color:#4f46e5;">New Feedback Received</h2>
-        <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="padding:8px 0;color:#6b7280;">From</td><td style="padding:8px 0;"><strong>${userName || 'Unknown'}</strong> (${userEmail || 'no email'})</td></tr>
-          <tr><td style="padding:8px 0;color:#6b7280;">School</td><td style="padding:8px 0;"><strong>${name || 'Unknown'}</strong></td></tr>
-          <tr><td style="padding:8px 0;color:#6b7280;">Subject</td><td style="padding:8px 0;"><strong>${subject}</strong></td></tr>
-        </table>
-        <div style="background:#f3f4f6;border-radius:8px;padding:16px;margin-top:12px;white-space:pre-wrap;">${message}</div>
-        <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;">
-        <p style="color:#9ca3af;font-size:12px;">Reply to this feedback from the <a href="https://eduplatformsoftware.com/super-admin/dashboard" style="color:#4f46e5;">Super Admin Dashboard</a>.</p>
-      </div>
-    `;
-    sendEmail(recipients.join(','), `[Feedback] ${subject}`, html);
-  }
+    // Notify super admin (best-effort)
+    try {
+      const adminEmails = await prisma.superAdmin.findMany({ select: { email: true } });
+      const recipients = [...new Set(adminEmails.map(a => a.email).filter(Boolean))];
+      if (recipients.length > 0) {
+        const html = `
+          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;">
+            <h2 style="color:#4f46e5;">New Feedback Received</h2>
+            <table style="width:100%;border-collapse:collapse;">
+              <tr><td style="padding:8px 0;color:#6b7280;">From</td><td style="padding:8px 0;"><strong>${userName || 'Unknown'}</strong> (${userEmail || 'no email'})</td></tr>
+              <tr><td style="padding:8px 0;color:#6b7280;">School</td><td style="padding:8px 0;"><strong>${name || 'Unknown'}</strong></td></tr>
+              <tr><td style="padding:8px 0;color:#6b7280;">Subject</td><td style="padding:8px 0;"><strong>${subject}</strong></td></tr>
+            </table>
+            <div style="background:#f3f4f6;border-radius:8px;padding:16px;margin-top:12px;white-space:pre-wrap;">${message}</div>
+            <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;">
+            <p style="color:#9ca3af;font-size:12px;">Reply to this feedback from the <a href="https://eduplatformsoftware.com/super-admin/dashboard" style="color:#4f46e5;">Super Admin Dashboard</a>.</p>
+          </div>
+        `;
+        sendEmail(recipients.join(','), `[Feedback] ${subject}`, html);
+      }
+    } catch (emailErr) {
+      console.error('Feedback email notification failed:', emailErr.message);
+    }
 
-  res.status(201).json(fb);
+    res.status(201).json(fb);
+  } catch (err) {
+    console.error('Feedback POST error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 router.get('/feedback', requireSuper, loadSuperAdmin, async (req, res) => {
