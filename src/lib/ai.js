@@ -1,5 +1,4 @@
 const OpenAI = require('openai');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const SYSTEM_PROMPT = `You are "Teacher Kofi", a friendly AI learning companion for kids in Ghana. You help students learn Mathematics, English, Science, Social Studies, and Ghanaian languages (Twi, Ga, Ewe, Fante, Dagbani).
 
@@ -28,35 +27,41 @@ async function generateAIReply(messages) {
   // Try Gemini first (free tier)
   if (process.env.GEMINI_API_KEY) {
     try {
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-
-      // Convert OpenAI-style messages to Gemini format
       const systemMsg = messages.find(m => m.role === 'system');
-      const chatHistory = [];
       const userMessages = messages.filter(m => m.role !== 'system');
+      const lastUserMsg = userMessages[userMessages.length - 1]?.content || '';
 
-      // Build history from all but the last user message
-      for (let i = 0; i < userMessages.length - 1; i++) {
-        const msg = userMessages[i];
-        chatHistory.push({
+      const contents = [];
+      for (const msg of userMessages.slice(0, -1)) {
+        contents.push({
           role: msg.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: msg.content }],
         });
       }
+      contents.push({ role: 'user', parts: [{ text: lastUserMsg }] });
 
-      const lastUserMsg = userMessages[userMessages.length - 1]?.content || '';
-      const chat = model.startChat({
-        systemInstruction: systemMsg?.content || SYSTEM_PROMPT,
-        history: chatHistory,
-      });
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemMsg?.content || SYSTEM_PROMPT }] },
+            contents,
+            generationConfig: { temperature: 0.7, maxOutputTokens: 1024 },
+          }),
+        }
+      );
 
-      const result = await chat.sendMessage(lastUserMsg);
-      const reply = result.response.text();
-      if (reply) return reply;
+      const data = await res.json();
+      if (data.error) {
+        console.error('Gemini API error:', data.error.message);
+      } else {
+        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (reply) return reply;
+      }
     } catch (err) {
       console.error('Gemini error:', err.message);
-      // Fall through to OpenAI
     }
   }
 
