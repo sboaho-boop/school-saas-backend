@@ -117,9 +117,10 @@ router.post('/schools', requireSuper, async (req, res) => {
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     const expiry = new Date(Date.now() + 15 * 60 * 1000);
+    const emailVerificationToken = require('crypto').randomBytes(32).toString('hex');
 
     await prisma.user.create({
-      data: { schoolId: school.id, email: adminEmail, password: hashed, name: adminName || 'School Admin', role: 'admin', isVerified: false, verificationCode: otp, verificationExpiry: expiry },
+      data: { schoolId: school.id, email: adminEmail, password: hashed, name: adminName || 'School Admin', role: 'admin', isVerified: false, verificationCode: otp, verificationExpiry: expiry, emailVerificationToken },
     });
 
     await prisma.subscription.create({
@@ -127,7 +128,7 @@ router.post('/schools', requireSuper, async (req, res) => {
     });
 
     const via = {};
-    const emailRes = await sendOtpEmail(adminEmail, adminName || 'School Admin', otp);
+    const emailRes = await sendOtpEmail(adminEmail, adminName || 'School Admin', otp, emailVerificationToken);
     if (emailRes.success) via.email = true;
 
     res.status(201).json({ school, message: `School created. Code: ${code}. Verification code sent to ${adminEmail}.`, verification: { otp, sentVia: via, expiresAt: expiry.toISOString() } });

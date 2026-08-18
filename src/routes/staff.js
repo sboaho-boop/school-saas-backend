@@ -63,6 +63,7 @@ router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('staff'), a
     const hashed = await bcrypt.hash(tempPassword, 10);
     const otp = generateOtp();
     const expiry = new Date(Date.now() + 15 * 60 * 1000);
+    const emailVerificationToken = crypto.randomBytes(32).toString('hex');
 
     const user = await prisma.user.create({
       data: {
@@ -75,6 +76,7 @@ router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('staff'), a
         isVerified: false,
         verificationCode: otp,
         verificationExpiry: expiry,
+        emailVerificationToken,
       },
     }).catch(async () => {
       await prisma.staff.delete({ where: { id: member.id } });
@@ -82,7 +84,7 @@ router.post('/', requireRole('headteacher', 'admin'), checkPlanLimit('staff'), a
     });
 
     const via = {};
-    const emailRes = await sendOtpEmail(member.email, member.name, otp);
+    const emailRes = await sendOtpEmail(member.email, member.name, otp, emailVerificationToken);
     if (emailRes.success) via.email = true;
     const smsRes = member.phone ? await sendSms(member.phone, `EDUPLATFORM SOFTWARE SERVICES: Your verification code is ${otp}. Expires in 15 minutes.`) : { skipped: true };
     if (smsRes.success) via.sms = true;

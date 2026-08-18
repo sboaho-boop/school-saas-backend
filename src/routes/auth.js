@@ -44,9 +44,10 @@ router.post('/register', async (req, res) => {
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     const expiry = new Date(Date.now() + 15 * 60 * 1000);
+    const emailVerificationToken = crypto.randomBytes(32).toString('hex');
 
     const user = await prisma.user.create({
-      data: { email, password: hashed, name, role: role || 'admin', schoolId: school.id, phone: phone || '', isVerified: false, verificationCode: otp, verificationExpiry: expiry },
+      data: { email, password: hashed, name, role: role || 'admin', schoolId: school.id, phone: phone || '', isVerified: false, verificationCode: otp, verificationExpiry: expiry, emailVerificationToken },
     });
     await prisma.subscription.create({ data: { schoolId: school.id } });
 
@@ -62,7 +63,7 @@ router.post('/register', async (req, res) => {
     });
 
     const via = {};
-    sendOtpEmail(user.email, user.name, otp).then((emailRes) => { if (emailRes.success) console.log(`Email OTP sent to ${user.email}`); else console.log('Email skipped:', emailRes.reason || emailRes.skipped); }).catch(() => {});
+    sendOtpEmail(user.email, user.name, otp, emailVerificationToken).then((emailRes) => { if (emailRes.success) console.log(`Email OTP sent to ${user.email}`); else console.log('Email skipped:', emailRes.reason || emailRes.skipped); }).catch(() => {});
     const smsRes = user.phone ? await sendSms(user.phone, `EDUPLATFORM SOFTWARE SERVICES: Your verification code is ${otp}. Expires in 15 minutes.`) : { skipped: true };
     if (smsRes.success) via.sms = true;
 
@@ -171,12 +172,29 @@ router.post('/verify-otp', async (req, res) => {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { isVerified: true, verificationCode: null, verificationExpiry: null },
+      data: { isVerified: true, verificationCode: null, verificationExpiry: null, emailVerificationToken: null },
     });
 
     res.json({ message: 'Verified successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/verify-email', async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ error: 'Token required' });
+    const user = await prisma.user.findFirst({ where: { emailVerificationToken: token } });
+    if (!user) return res.status(400).json({ error: 'Invalid verification link' });
+    if (user.isVerified) return res.redirect('https://eduplatformsoftware.com/verify-email?status=already');
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isVerified: true, verificationCode: null, verificationExpiry: null, emailVerificationToken: null },
+    });
+    res.redirect('https://eduplatformsoftware.com/verify-email?status=success');
+  } catch (err) {
+    res.redirect('https://eduplatformsoftware.com/verify-email?status=error');
   }
 });
 

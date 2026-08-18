@@ -49,6 +49,7 @@ model School {
   hubtelDisbursementAccount String? @default("")
   hubtelSmsClientId     String? @default("")
   hubtelSmsClientSecret String? @default("")
+  smsSenderId           String? @default("")
   createdAt    DateTime @default(now())
 
   users          User[]
@@ -116,6 +117,7 @@ model User {
   isVerified       Boolean   @default(false)
   verificationCode String?
   verificationExpiry DateTime?
+  emailVerificationToken String?
   smsPreferences   String    @default("{}")
   createdAt        DateTime  @default(now())
 
