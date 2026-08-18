@@ -20,8 +20,8 @@ model SuperAdmin {
 
 model Feedback {
   id         String   @id @default(cuid())
-  schoolId   String
-  userId     String
+  schoolId   String?
+  userId     String?
   userName   String
   userEmail  String
   schoolName String
@@ -32,7 +32,7 @@ model Feedback {
   reply      String?
   createdAt  DateTime @default(now())
 
-  school      School      @relation(fields: [schoolId], references: [id])
+  school      School?     @relation(fields: [schoolId], references: [id])
   assignedTo  SuperAdmin? @relation(fields: [assignedToId], references: [id])
   assignedToId String?
 }
