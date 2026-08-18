@@ -1,35 +1,10 @@
 const { Router } = require('express');
-const OpenAI = require('openai');
 const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
+const { SYSTEM_PROMPT, generateAIReply } = require('../lib/ai');
 
 const router = Router();
 router.use(authenticate);
-
-function getOpenAI() {
-  if (!process.env.OPENAI_API_KEY) return null;
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-}
-
-const SYSTEM_PROMPT = `You are "Teacher Kofi", a friendly AI learning companion for kids in Ghana. You help students learn Mathematics, English, Science, and Ghanaian languages (Twi, Ga, Ewe, Fante, Dagbani).
-
-Rules:
-- Speak in a warm, encouraging tone suitable for children ages 4-16
-- Adapt your language complexity based on the child's age
-- When the child mixes English with a Ghanaian language, respond in the same mix
-- For young children (4-8), use simple words, short sentences, and emojis
-- For older children (9-16), provide more detailed explanations
-- Always be patient — if the child says they don't understand, explain differently
-- NEVER give inappropriate or harmful content
-- Encourage the child when they get something right
-- Correct mistakes gently
-- Relate examples to things Ghanaian children know (market, banku, kelewele, trotro, football, etc.)
-- When asked about school subjects, follow the Ghanaian curriculum (Basic 1-9, SHS 1-3)
-- For mathematics, show step-by-step working
-- For English, help with reading, grammar, spelling, and pronunciation
-- For science, explain concepts using everyday examples
-
-When you don't know something, say "I'm not sure, but let's find out together!"`;
 
 async function getSchoolContext(schoolId) {
   const school = await prisma.school.findUnique({ where: { id: schoolId }, select: { name: true } });
@@ -57,17 +32,8 @@ router.post('/chat', async (req, res) => {
       { role: 'user', content: message },
     ];
 
-    const ai = getOpenAI();
-    if (!ai) return res.status(503).json({ error: 'AI service not configured. Set OPENAI_API_KEY.' });
-
-    const completion = await ai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages,
-      max_tokens: 1024,
-      temperature: 0.7,
-    });
-
-    const reply = completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
+    const reply = await generateAIReply(messages);
+    if (!reply) return res.status(503).json({ error: 'AI service not configured. Set GEMINI_API_KEY or OPENAI_API_KEY.' });
 
     await prisma.aIConversation.create({
       data: {
@@ -85,7 +51,6 @@ router.post('/chat', async (req, res) => {
   }
 });
 
-// Get conversation history for a user
 router.get('/history', async (req, res) => {
   try {
     const conversations = await prisma.aIConversation.findMany({
