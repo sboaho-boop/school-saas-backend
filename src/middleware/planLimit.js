@@ -1,8 +1,8 @@
 const prisma = require('../lib/prisma');
 
 const PLANS = {
-  free: { studentLimit: 30, staffLimit: 10 },
-  pro: { studentLimit: 200, staffLimit: 50 },
+  free: { studentLimit: 100, staffLimit: 10 },
+  pro: { studentLimit: 1000, staffLimit: 50 },
   enterprise: { studentLimit: 999999, staffLimit: 999999 },
 };
 

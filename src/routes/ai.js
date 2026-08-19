@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
-const { SYSTEM_PROMPT, generateAIReply } = require('../lib/ai');
+const { SYSTEM_PROMPT, generateAIReply, checkAILimit } = require('../lib/ai');
 
 const router = Router();
 router.use(authenticate);
@@ -17,6 +17,14 @@ router.post('/chat', async (req, res) => {
   try {
     const { message, history, studentContext } = req.body;
     if (!message) return res.status(400).json({ error: 'Message required' });
+
+    const limit = await checkAILimit(req.schoolId);
+    if (!limit.allowed) {
+      return res.status(403).json({
+        error: `AI tutor limit reached (${limit.used}/${limit.limit} today). Upgrade to Pro for more.`,
+        limit,
+      });
+    }
 
     const context = await getSchoolContext(req.schoolId);
     const schoolInfo = `School: ${context.schoolName} (${context.studentCount} students, ${context.staffCount} staff)`;
@@ -44,7 +52,7 @@ router.post('/chat', async (req, res) => {
       },
     }).catch(() => {});
 
-    res.json({ reply });
+    res.json({ reply, remaining: limit.remaining });
   } catch (err) {
     console.error('AI chat error:', err.message);
     res.status(500).json({ error: err.message || 'AI service unavailable' });

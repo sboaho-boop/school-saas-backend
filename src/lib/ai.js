@@ -1,4 +1,5 @@
 const OpenAI = require('openai');
+const prisma = require('./prisma');
 
 const SYSTEM_PROMPT = `You are "Teacher Kofi", a friendly AI learning companion for kids in Ghana. You help students learn Mathematics, English, Science, Social Studies, and Ghanaian languages (Twi, Ga, Ewe, Fante, Dagbani).
 
@@ -23,7 +24,31 @@ Rules:
 
 When you don't know something, say "I'm not sure, but let's find out together!"`;
 
-async function generateAIReply(messages) {
+const AI_LIMITS = {
+  free: 5,
+  pro: 100,
+  enterprise: -1, // unlimited
+};
+
+async function checkAILimit(schoolId) {
+  try {
+    const sub = await prisma.subscription.findUnique({ where: { schoolId } });
+    const plan = sub?.plan || 'free';
+    const limit = AI_LIMITS[plan] ?? AI_LIMITS.free;
+    if (limit === -1) return { allowed: true, plan, remaining: -1 };
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const count = await prisma.aIConversation.count({
+      where: { schoolId, createdAt: { gte: today } },
+    });
+    return { allowed: count < limit, plan, remaining: Math.max(0, limit - count), used: count, limit };
+  } catch {
+    return { allowed: true, plan: 'free', remaining: AI_LIMITS.free };
+  }
+}
+
+async function generateAIReply(messages, schoolId) {
   // Try Gemini first (free tier)
   if (process.env.GEMINI_API_KEY) {
     try {
@@ -84,4 +109,4 @@ async function generateAIReply(messages) {
   return null;
 }
 
-module.exports = { SYSTEM_PROMPT, generateAIReply };
+module.exports = { SYSTEM_PROMPT, generateAIReply, checkAILimit };

@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const { signToken, verifyToken } = require('../lib/jwt');
 const { authenticate } = require('../middleware/auth');
-const { SYSTEM_PROMPT, generateAIReply } = require('../lib/ai');
+const { SYSTEM_PROMPT, generateAIReply, checkAILimit } = require('../lib/ai');
 
 const router = Router();
 
@@ -184,6 +184,14 @@ router.post('/ai/chat', authenticateStudent, async (req, res) => {
     const { message, history } = req.body;
     if (!message) return res.status(400).json({ error: 'Message required' });
 
+    const limit = await checkAILimit(req.schoolId);
+    if (!limit.allowed) {
+      return res.status(403).json({
+        error: `AI tutor limit reached (${limit.used}/${limit.limit} today). Your school needs to upgrade to use more.`,
+        limit,
+      });
+    }
+
     const student = await prisma.student.findUnique({
       where: { id: req.studentId },
       select: { firstName: true, className: true, classId: true },
@@ -198,7 +206,7 @@ router.post('/ai/chat', authenticateStudent, async (req, res) => {
       { role: 'user', content: message },
     ];
 
-    const reply = await generateAIReply(messages);
+    const reply = await generateAIReply(messages, req.schoolId);
     if (!reply) return res.status(503).json({ error: 'AI tutor not configured yet. Contact your school administrator.' });
 
     await prisma.aIConversation.create({
@@ -210,7 +218,7 @@ router.post('/ai/chat', authenticateStudent, async (req, res) => {
       },
     }).catch(() => {});
 
-    res.json({ reply });
+    res.json({ reply, remaining: limit.remaining });
   } catch (err) {
     console.error('Student AI chat error:', err.message);
     res.status(500).json({ error: err.message || 'AI service unavailable' });
