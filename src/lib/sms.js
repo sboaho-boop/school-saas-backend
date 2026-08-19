@@ -117,12 +117,31 @@ async function sendSubscriptionAlert(phone, plan, action) {
   return sendSms(phone, `Your EDUPLATFORM SOFTWARE SERVICES subscription has been ${action}. Plan: ${plan}. Check your billing settings for details.`);
 }
 
+// Check Hubtel SMS account balance / credits
+async function checkSmsBalance(credentials) {
+  const clientId = credentials?.hubtelSmsClientId || credentials?.clientId || HUBTEL_SMS_CLIENT_ID;
+  const clientSecret = credentials?.hubtelSmsClientSecret || credentials?.clientSecret || HUBTEL_SMS_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return { skipped: true, reason: 'SMS client ID/Secret not set' };
+
+  try {
+    const result = await makeSmsRequest({
+      method: 'GET',
+      path: '/v1/balance',
+      credentials: { clientId, clientSecret },
+    });
+    return result;
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
 module.exports = {
   sendSms,
   sendSmsPost,
   sendBatchSms,
   sendPersonalizedBatch,
   checkMessageStatus,
+  checkSmsBalance,
   sendRegistrationAlert,
   sendLoginAlert,
   sendFeeReceipt,

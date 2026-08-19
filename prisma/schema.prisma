@@ -42,6 +42,10 @@ model School {
   code         String?  @unique
   name         String
   address      String   @default("")
+  country      String   @default("")
+  schoolType   String   @default("")
+  primaryColor String   @default("#4f46e5")
+  onboardingComplete Boolean @default(false)
   pinThreshold  Float    @default(20)
   hubtelClientId     String? @default("")
   hubtelClientSecret String? @default("")

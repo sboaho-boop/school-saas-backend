@@ -21,7 +21,7 @@ function signTempToken(userId) {
 
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, name, role, schoolName, phone, privacyConsent } = req.body;
+    const { email, password, name, role, schoolName, phone, privacyConsent, country, schoolType, primaryColor } = req.body;
     if (!email || !password || !name) return res.status(400).json({ error: 'Missing fields' });
     if (!privacyConsent) return res.status(400).json({ error: 'You must accept the privacy policy to register' });
     const existing = await prisma.user.findFirst({ where: { email } });
@@ -33,7 +33,7 @@ router.post('/register', async (req, res) => {
       let code = 'SCH-';
       for (let j = 0; j < 6; j++) code += chars[Math.floor(Math.random() * chars.length)];
       try {
-        school = await prisma.school.create({ data: { code, name: schoolName || `${name}'s School` } });
+        school = await prisma.school.create({ data: { code, name: schoolName || `${name}'s School`, country: country || '', schoolType: schoolType || '', primaryColor: primaryColor || '#4f46e5' } });
         break;
       } catch (e) {
         if (e.code !== 'P2002') throw e;
@@ -99,6 +99,12 @@ router.post('/login', async (req, res) => {
 
     const token = signToken({ id: user.id, email: user.email, role: user.role, schoolId: user.schoolId });
 
+    let onboardingComplete = false;
+    if (user.schoolId && (user.role === 'admin' || user.role === 'headteacher')) {
+      const school = await prisma.school.findUnique({ where: { id: user.schoolId }, select: { onboardingComplete: true } });
+      onboardingComplete = school?.onboardingComplete ?? false;
+    }
+
     if (user.phone) {
       sendLoginAlert(user.phone, user.name).catch(() => {});
     }
@@ -107,6 +113,7 @@ router.post('/login', async (req, res) => {
     res.json({
       user: { id: user.id, email: user.email, name: user.name, role: user.role, schoolId: user.schoolId, phone: user.phone, twoFactorEnabled: false },
       token,
+      onboardingComplete,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
