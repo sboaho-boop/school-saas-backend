@@ -43,6 +43,7 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
     const { plan, phone, channel } = req.body;
     console.log(`[billing/upgrade] user=${req.user.id} role=${req.user.role} schoolId=${req.schoolId} plan=${plan}`);
     if (!PLANS[plan]) return res.status(400).json({ error: 'Invalid plan' });
+    if (!req.schoolId) return res.status(400).json({ error: 'No school associated with this account' });
     if (PLANS[plan].amount === 0) {
       const limits = PLANS[plan];
       let sub = await prisma.subscription.findUnique({ where: { schoolId: req.schoolId } });
