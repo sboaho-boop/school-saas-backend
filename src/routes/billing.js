@@ -41,6 +41,7 @@ router.get('/subscription', authenticate, async (req, res) => {
 router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const { plan, phone, channel } = req.body;
+    console.log(`[billing/upgrade] user=${req.user.id} role=${req.user.role} schoolId=${req.schoolId} plan=${plan}`);
     if (!PLANS[plan]) return res.status(400).json({ error: 'Invalid plan' });
     if (PLANS[plan].amount === 0) {
       const limits = PLANS[plan];
@@ -54,6 +55,8 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
       return res.json({ message: `Downgraded to ${plan}` });
     }
     const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
+    if (!school) return res.status(400).json({ error: 'School not found for this account' });
+    console.log(`[billing/upgrade] school found: ${school.id} name=${school.name}`);
     const reference = crypto.randomBytes(12).toString('hex');
 
     if (phone && channel) {
@@ -80,6 +83,7 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
       return res.json({ message: 'Payment prompt sent. Approve to complete.', reference: `SUB-${reference.slice(0, 24)}` });
     }
 
+    console.log(`[billing/upgrade] creating Hubtel checkout, amount=${PLANS[plan].amount}`);
     const checkout = await createCheckout({
       amount: PLANS[plan].amount,
       title: `EDUPLATFORM SOFTWARE SERVICES ${PLANS[plan].name} Plan`,
@@ -90,6 +94,7 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
       payeeMobileNumber: req.user.phone,
       schoolCredentials: school,
     });
+    console.log(`[billing/upgrade] checkout created: ${JSON.stringify(checkout)}`);
     await prisma.subscription.upsert({
       where: { schoolId: req.schoolId },
       update: { pendingPlan: plan, pendingCheckoutRef: reference },
@@ -97,7 +102,7 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
     });
     res.json({ checkoutUrl: checkout.checkoutUrl, reference });
   } catch (err) {
-    console.error(err);
+    console.error('[billing/upgrade] ERROR:', err.message, err.stack);
     res.status(500).json({ error: err.message || 'Failed to create payment checkout' });
   }
 });
