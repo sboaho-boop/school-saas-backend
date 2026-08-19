@@ -47,23 +47,29 @@ function createCheckout({ amount, title, description, clientReference, payeeName
       },
     };
 
+    console.log('[hubtel-checkout] Sending request to:', HUBTEL_CHECKOUT_URL, 'amount:', amount, 'merchant:', merchantAccount);
+
     const req = https.request(options, (res) => {
       let body = '';
       res.on('data', (c) => body += c);
       res.on('end', () => {
+        console.log('[hubtel-checkout] Response status:', res.statusCode, 'body:', body.substring(0, 500));
         try {
           const data = JSON.parse(body);
           if (data.responseCode === '0000') {
             resolve({ checkoutUrl: data.data.checkoutUrl, checkoutId: data.data.checkoutId || clientReference });
           } else {
-            reject(new Error(data.message || 'Hubtel checkout failed'));
+            reject(new Error(`Hubtel error (${res.statusCode}): ${data.message || data.ResponseMessage || JSON.stringify(data)}`));
           }
         } catch {
-          reject(new Error(`Hubtel response: ${body}`));
+          reject(new Error(`Hubtel response (status ${res.statusCode}): ${body.substring(0, 200)}`));
         }
       });
     });
-    req.on('error', reject);
+    req.on('error', (err) => {
+      console.error('[hubtel-checkout] Request error:', err.message);
+      reject(err);
+    });
     req.write(payload);
     req.end();
   });
