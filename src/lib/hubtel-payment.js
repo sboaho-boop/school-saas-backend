@@ -9,9 +9,11 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 function createCheckout({ amount, title, description, clientReference, payeeName, payeeEmail, payeeMobileNumber, callbackUrl, returnUrl, cancellationUrl, schoolCredentials }) {
   return new Promise((resolve, reject) => {
-    const clientId = schoolCredentials?.hubtelClientId || HUBTEL_CLIENT_ID;
-    const clientSecret = schoolCredentials?.hubtelClientSecret || HUBTEL_CLIENT_SECRET;
-    const merchantAccount = schoolCredentials?.hubtelMerchantAccount || HUBTEL_MERCHANT_ACCOUNT;
+    const clientId = (schoolCredentials?.hubtelClientId && schoolCredentials.hubtelClientId.trim()) || HUBTEL_CLIENT_ID;
+    const clientSecret = (schoolCredentials?.hubtelClientSecret && schoolCredentials.hubtelClientSecret.trim()) || HUBTEL_CLIENT_SECRET;
+    const merchantAccount = (schoolCredentials?.hubtelMerchantAccount && schoolCredentials.hubtelMerchantAccount.trim()) || HUBTEL_MERCHANT_ACCOUNT;
+
+    console.log('[hubtel-checkout] clientId set:', !!clientId, 'clientSecret set:', !!clientSecret, 'merchant:', !!merchantAccount);
 
     if (!clientId || !clientSecret || !merchantAccount) {
       return reject(new Error('Hubtel payment not configured. Set Hubtel credentials in school settings or environment variables.'));
