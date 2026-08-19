@@ -238,4 +238,83 @@ router.get('/ai/history', authenticateStudent, async (req, res) => {
   }
 });
 
+// ─── Student AI Voice ──────────────────────────────────────
+const multer = require('multer');
+const OpenAI = require('openai');
+const voiceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+const VOICE_LANG_MAP = { en: 'en', fr: 'fr', tw: 'ak', ha: 'ha', ga: 'en', ewe: 'ee', fante: 'ak', dagbani: 'dag' };
+const VOICE_LANG_NAMES = { en: 'English', fr: 'French', tw: 'Twi', ha: 'Hausa', ga: 'Ga', ewe: 'Ewe', fante: 'Fante', dagbani: 'Dagbani' };
+
+router.post('/ai/voice', authenticateStudent, voiceUpload.single('audio'), async (req, res) => {
+  try {
+    const { history, language } = req.body;
+    const lang = language || 'en';
+    const langName = VOICE_LANG_NAMES[lang] || 'English';
+
+    if (!req.file) return res.status(400).json({ error: 'Audio file required' });
+
+    const limit = await checkAILimit(req.schoolId);
+    if (!limit.allowed) {
+      return res.status(403).json({ error: `AI tutor limit reached (${limit.used}/${limit.limit} today). Your school needs to upgrade to use more.`, limit });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(503).json({ error: 'Voice transcription not configured. Set OPENAI_API_KEY.' });
+    }
+
+    let transcribed = '';
+    try {
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const audioFile = new File([req.file.buffer], 'voice.webm', { type: req.file.mimetype || 'audio/webm' });
+      const transcription = await openai.audio.transcriptions.create({
+        model: 'whisper-1',
+        file: audioFile,
+        language: VOICE_LANG_MAP[lang] || 'en',
+      });
+      transcribed = transcription.text || '';
+    } catch (whisperErr) {
+      console.error('[student/voice] Whisper error:', whisperErr.message);
+      return res.status(500).json({ error: 'Failed to transcribe audio. Please try again or type your message.' });
+    }
+
+    if (!transcribed.trim()) {
+      return res.status(400).json({ error: 'Could not understand the audio. Please try again.' });
+    }
+
+    const student = await prisma.student.findUnique({
+      where: { id: req.studentId },
+      select: { firstName: true, className: true, classId: true },
+    });
+
+    const studentCtx = `Student info: ${student?.firstName || 'Student'}, Class: ${student?.className || 'Unknown'}`;
+    const langInstruction = `\nThe student is speaking in ${langName}. Please respond in ${langName}. Keep your spoken response natural and concise — this will be read aloud to the student.`;
+
+    const parsedHistory = typeof history === 'string' ? JSON.parse(history || '[]') : (history || []);
+
+    const messages = [
+      { role: 'system', content: `${SYSTEM_PROMPT}\n\n${studentCtx}${langInstruction}` },
+      ...parsedHistory.slice(-20),
+      { role: 'user', content: transcribed },
+    ];
+
+    const reply = await generateAIReply(messages, req.schoolId);
+    if (!reply) return res.status(503).json({ error: 'AI tutor not configured yet. Contact your school administrator.' });
+
+    await prisma.aIConversation.create({
+      data: {
+        schoolId: req.schoolId,
+        userId: req.studentId,
+        userMessage: `[voice/${lang}] ${transcribed}`,
+        aiResponse: reply,
+      },
+    }).catch(() => {});
+
+    res.json({ transcribed, reply, language: lang, remaining: limit.remaining });
+  } catch (err) {
+    console.error('[student/voice] Error:', err.message);
+    res.status(500).json({ error: err.message || 'Voice processing failed' });
+  }
+});
+
 module.exports = router;
