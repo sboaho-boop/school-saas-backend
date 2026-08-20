@@ -2,6 +2,7 @@ const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
 const { verifyToken } = require('../lib/jwt');
+const { triggerNotification, NOTIFICATION_TYPES, getStudentGuardians } = require('../lib/notification-engine');
 
 const router = Router();
 
@@ -60,6 +61,17 @@ router.put('/:id/grade', async (req, res) => {
       where: { id: req.params.id },
       data: { grade: parseFloat(grade), feedback, status: 'graded', gradedBy: req.user?.id || null, gradedAt: new Date() },
     });
+
+    const assignment = await prisma.assignment.findFirst({ where: { id: submission.assignmentId, schoolId: req.schoolId } });
+    const guardians = await getStudentGuardians(req.schoolId, submission.studentId);
+    if (guardians.length > 0 && assignment) {
+      triggerNotification(req.schoolId, NOTIFICATION_TYPES.SUBMISSION_GRADED, {
+        title: `Assignment graded: ${assignment.title}`,
+        message: `Your submission received a grade of ${grade}.`,
+        recipients: guardians,
+      }).catch(() => {});
+    }
+
     res.json(updated);
   } catch (err) {
     res.status(400).json({ error: err.message });

@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { triggerNotification, NOTIFICATION_TYPES, getClassStudentGuardians } = require('../lib/notification-engine');
 
 const router = Router();
 router.use(authenticate);
@@ -55,6 +56,16 @@ router.post('/', requireRole('headteacher', 'admin', 'teaching'), async (req, re
     const assignment = await prisma.assignment.create({
       data: { title, description, dueDate, classId, subjectId, totalPoints: totalPoints || 100, fileUrl, createdBy: req.user.id, schoolId: req.schoolId },
     });
+
+    const guardians = await getClassStudentGuardians(req.schoolId, classId);
+    if (guardians.length > 0) {
+      triggerNotification(req.schoolId, NOTIFICATION_TYPES.ASSIGNMENT_POSTED, {
+        title: `New assignment: ${title}`,
+        message: `A new assignment has been posted. Due: ${dueDate}.`,
+        recipients: guardians,
+      }).catch(() => {});
+    }
+
     res.status(201).json(assignment);
   } catch (err) {
     res.status(400).json({ error: err.message });

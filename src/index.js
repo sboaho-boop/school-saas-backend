@@ -62,6 +62,11 @@ const compactReportRoutes = require('./routes/compact-report');
 const repaymentHistoryRoutes = require('./routes/repayment-history');
 const sendMoneyRoutes = require('./routes/send-money');
 const ussdRoutes = require('./routes/ussd');
+const conversationRoutes = require('./routes/conversations');
+const templateRoutes = require('./routes/templates');
+const preferenceRoutes = require('./routes/notification-preferences');
+const emailCampaignRoutes = require('./routes/email-campaigns');
+const smsDeliveryRoutes = require('./routes/sms-delivery');
 const prisma = require('./lib/prisma');
 
 const app = express();
@@ -147,6 +152,11 @@ app.use('/api/compact-report', compactReportRoutes);
 app.use('/api/repayment-history', repaymentHistoryRoutes);
 app.use('/api/send-money', sendMoneyRoutes);
 app.use('/api/ussd', ussdRoutes);
+app.use('/api/conversations', conversationRoutes);
+app.use('/api/templates', templateRoutes);
+app.use('/api/notification-preferences', preferenceRoutes);
+app.use('/api/email-campaigns', emailCampaignRoutes);
+app.use('/api/sms-delivery', smsDeliveryRoutes);
 
 const path = require('path');
 const fs = require('fs');
@@ -171,6 +181,11 @@ try {
   const { ensureVapidKeys } = require('./lib/web-push');
   ensureVapidKeys();
 } catch {}
+
+try {
+  const { startCronWorkers } = require('./lib/cron-workers');
+  startCronWorkers();
+} catch (e) { console.error('Cron workers failed to start:', e.message); }
 
 app.listen(PORT, async () => {
   console.log(`EDUPLATFORM SOFTWARE SERVICES API running on http://localhost:${PORT}`);

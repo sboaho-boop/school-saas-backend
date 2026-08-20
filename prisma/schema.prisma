@@ -105,6 +105,10 @@ model School {
   aiConversations AIConversation[]
   directDebitPreapprovals DirectDebitPreapproval[]
   recurringInvoices RecurringInvoice[]
+  conversations   Conversation[]
+  messageDeliveries MessageDelivery[]
+  messageTemplates MessageTemplate[]
+  scheduledMessages ScheduledMessage[]
 }
 
 model User {
@@ -201,6 +205,7 @@ model Student {
   bedAllocations  BedAllocation[]
   conferenceBookings ConferenceBooking[]
   alumni          Alumni?
+  conversations   Conversation[]
 
   @@unique([schoolId, email])
   @@unique([schoolId, indexNumber])
@@ -326,6 +331,119 @@ model TaskComment {
   school School @relation(fields: [schoolId], references: [id])
   task   Task   @relation(fields: [taskId], references: [id])
 }
+
+// === COMMUNICATION SYSTEM ===
+
+model Conversation {
+  id        String   @id @default(cuid())
+  schoolId  String
+  studentId String?
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school       School                 @relation(fields: [schoolId], references: [id])
+  student      Student?               @relation(fields: [studentId], references: [id])
+  participants ConversationParticipant[]
+  messages     ConversationMessage[]
+}
+
+model ConversationParticipant {
+  id             String   @id @default(cuid())
+  conversationId String
+  userId         String
+  joinedAt       DateTime @default(now())
+  lastReadAt     DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+}
+
+model ConversationMessage {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  body           String
+  type           String   @default("text")
+  fileUrl        String?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model MessageDelivery {
+  id              String   @id @default(cuid())
+  messageId       String?
+  conversationMsgId String?
+  schoolId        String
+  recipientId     String
+  channel         String
+  status          String   @default("queued")
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  readAt          DateTime?
+  failureReason   String?
+  retryCount      Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId, recipientId, status])
+  @@index([messageId])
+  @@index([conversationMsgId])
+}
+
+model MessageTemplate {
+  id         String   @id @default(cuid())
+  schoolId   String
+  name       String
+  subject    String   @default("")
+  body       String
+  variables  String   @default("[]")
+  category   String   @default("general")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  school School @relation(fields: [schoolId], references: [id])
+}
+
+model NotificationPreference {
+  id       String @id @default(cuid())
+  schoolId String
+  userId   String
+  type     String
+
+  inApp Boolean @default(true)
+  push  Boolean @default(true)
+  email Boolean @default(false)
+  sms   Boolean @default(false)
+
+  mandatory Boolean @default(false)
+
+  @@unique([schoolId, userId, type])
+}
+
+model ScheduledMessage {
+  id              String   @id @default(cuid())
+  schoolId        String
+  title           String
+  body            String
+  audience        String
+  audienceFilter  String   @default("{}")
+  channels        String   @default("[\"in_app\"]")
+  scheduledAt     DateTime
+  sentAt          DateTime?
+  status          String   @default("pending")
+  createdById     String
+  createdAt       DateTime @default(now())
+
+  school School @relation(fields: [schoolId], references: [id])
+
+  @@index([schoolId, status, scheduledAt])
+}
+
 
 model AcademicClass {
   id       String @id @default(cuid())

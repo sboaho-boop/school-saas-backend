@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
+const { triggerNotification, NOTIFICATION_TYPES, getStudentGuardians } = require('../lib/notification-engine');
 
 const router = Router();
 router.use(authenticate);
@@ -35,11 +36,35 @@ router.post('/', async (req, res) => {
     const existing = await prisma.attendance.findFirst({ where: { studentId, date, schoolId: req.schoolId } });
     if (existing) {
       const updated = await prisma.attendance.update({ where: { id: existing.id }, data: { status } });
+      if (status === 'absent' || status === 'late') {
+        const guardians = await getStudentGuardians(req.schoolId, studentId);
+        if (guardians.length > 0) {
+          const notifType = status === 'absent' ? NOTIFICATION_TYPES.STUDENT_ABSENT : NOTIFICATION_TYPES.STUDENT_LATE;
+          triggerNotification(req.schoolId, notifType, {
+            title: `${studentName} was marked ${status}`,
+            message: `${studentName} was marked ${status} at school on ${date}.`,
+            recipients: guardians,
+            smsMessage: `${studentName} was marked ${status} at school today.`,
+          }).catch(() => {});
+        }
+      }
       return res.json(updated);
     }
     const record = await prisma.attendance.create({
       data: { studentId, studentName, classId, className, date, status, schoolId: req.schoolId },
     });
+    if (status === 'absent' || status === 'late') {
+      const guardians = await getStudentGuardians(req.schoolId, studentId);
+      if (guardians.length > 0) {
+        const notifType = status === 'absent' ? NOTIFICATION_TYPES.STUDENT_ABSENT : NOTIFICATION_TYPES.STUDENT_LATE;
+        triggerNotification(req.schoolId, notifType, {
+          title: `${studentName} was marked ${status}`,
+          message: `${studentName} was marked ${status} at school on ${date}.`,
+          recipients: guardians,
+          smsMessage: `${studentName} was marked ${status} at school today.`,
+        }).catch(() => {});
+      }
+    }
     res.status(201).json(record);
   } catch (err) {
     res.status(400).json({ error: err.message });

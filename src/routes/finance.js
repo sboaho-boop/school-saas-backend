@@ -2,6 +2,7 @@ const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
 const { sendFeeReceipt } = require('../lib/sms');
+const { triggerNotification, NOTIFICATION_TYPES, getStudentGuardians } = require('../lib/notification-engine');
 
 const router = Router();
 router.use(authenticate);
@@ -42,6 +43,18 @@ router.post('/:id/pay', async (req, res) => {
     const student = await prisma.student.findFirst({ where: { id: record.studentId, schoolId: req.schoolId } });
     if (student && student.parentPhone) {
       sendFeeReceipt(student.parentPhone, student.firstName, payment, newBalance).catch(() => {});
+    }
+
+    if (student) {
+      const guardians = await getStudentGuardians(req.schoolId, record.studentId);
+      if (guardians.length > 0) {
+        triggerNotification(req.schoolId, NOTIFICATION_TYPES.FEE_PAYMENT_RECEIVED, {
+          title: `Fee payment received for ${record.studentName}`,
+          message: `Payment of GHS ${payment} received. Outstanding balance: GHS ${newBalance}.`,
+          recipients: guardians,
+          smsMessage: `Fee payment of GHS ${payment} received for ${student.firstName}. Outstanding balance: GHS ${newBalance}. Thank you.`,
+        }).catch(() => {});
+      }
     }
 
     res.json(updated);

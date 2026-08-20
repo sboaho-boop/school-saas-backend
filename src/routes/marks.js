@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
+const { triggerNotification, NOTIFICATION_TYPES, getStudentGuardians } = require('../lib/notification-engine');
 
 const COMPONENT_NAMES = ['classExercise', 'homework', 'quiz', 'midterm', 'exam'];
 const COMPONENT_LABELS = { classExercise: 'Class Exercise', homework: 'Homework', quiz: 'Quiz', midterm: 'Mid-Term', exam: 'Exam' };
@@ -87,6 +88,21 @@ router.post('/', async (req, res) => {
       return res.json(updated);
     }
     const created = await prisma.grade.create({ data });
+
+    const student = await prisma.student.findFirst({ where: { id: studentId, schoolId: req.schoolId } });
+    const term = await prisma.term.findFirst({ where: { id: termId, schoolId: req.schoolId } });
+    if (student && term) {
+      const guardians = await getStudentGuardians(req.schoolId, studentId);
+      if (guardians.length > 0) {
+        const subject = await prisma.subject.findFirst({ where: { id: subjectId, schoolId: req.schoolId } });
+        triggerNotification(req.schoolId, NOTIFICATION_TYPES.RESULT_PUBLISHED, {
+          title: `New grade published for ${student.firstName}`,
+          message: `${subject ? subject.name : 'Subject'}: ${grade} (${score}/${term.name})`,
+          recipients: guardians,
+        }).catch(() => {});
+      }
+    }
+
     res.status(201).json(created);
   } catch (err) {
     res.status(400).json({ error: err.message });

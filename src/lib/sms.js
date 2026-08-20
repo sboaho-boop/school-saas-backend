@@ -93,28 +93,36 @@ async function checkMessageStatus({ messageId, credentials }) {
   });
 }
 
-async function sendRegistrationAlert(phone, name, schoolName) {
-  return sendSms(phone, `Welcome ${name}! Your school "${schoolName}" is registered on EDUPLATFORM SOFTWARE SERVICES. Login at your dashboard to get started.`);
+async function sendRegistrationAlert(phone, name, schoolName, credentials) {
+  return sendSmsPost({ to: phone, content: `Welcome ${name}! Your school "${schoolName}" is registered on EDUPLATFORM SOFTWARE SERVICES. Login at your dashboard to get started.`, credentials });
 }
 
-async function sendLoginAlert(phone, name) {
-  return sendSms(phone, `Hi ${name}, a login was detected on your EDUPLATFORM SOFTWARE SERVICES account. If this wasn't you, please change your password immediately.`);
+async function sendLoginAlert(phone, name, credentials) {
+  return sendSmsPost({ to: phone, content: `Hi ${name}, a login was detected on your EDUPLATFORM SOFTWARE SERVICES account. If this wasn't you, please change your password immediately.`, credentials });
 }
 
-async function sendFeeReceipt(phone, studentName, amount, balance) {
-  return sendSms(phone, `Fee payment of GHS ${amount} received for ${studentName}. Outstanding balance: GHS ${balance}. Thank you.`);
+async function sendFeeReceipt(phone, studentName, amount, balance, credentials) {
+  return sendSmsPost({ to: phone, content: `Fee payment of GHS ${amount} received for ${studentName}. Outstanding balance: GHS ${balance}. Thank you.`, credentials });
 }
 
-async function sendAttendanceAlert(phone, studentName, status) {
-  return sendSms(phone, `${studentName} was marked ${status} at school today.`);
+async function sendAttendanceAlert(phone, studentName, status, credentials) {
+  return sendSmsPost({ to: phone, content: `${studentName} was marked ${status} at school today.`, credentials });
 }
 
-async function sendLowBalanceAlert(phone, studentName, balance) {
-  return sendSms(phone, `Alert: ${studentName}'s wallet balance is low (GHS ${balance}). Please top up to avoid service interruptions.`);
+async function sendLowBalanceAlert(phone, studentName, balance, credentials) {
+  return sendSmsPost({ to: phone, content: `Alert: ${studentName}'s wallet balance is low (GHS ${balance}). Please top up to avoid service interruptions.`, credentials });
 }
 
-async function sendSubscriptionAlert(phone, plan, action) {
-  return sendSms(phone, `Your EDUPLATFORM SOFTWARE SERVICES subscription has been ${action}. Plan: ${plan}. Check your billing settings for details.`);
+async function sendSubscriptionAlert(phone, plan, action, credentials) {
+  return sendSmsPost({ to: phone, content: `Your EDUPLATFORM SOFTWARE SERVICES subscription has been ${action}. Plan: ${plan}. Check your billing settings for details.`, credentials });
+}
+
+async function sendResultAlert(phone, studentName, term, credentials) {
+  return sendSmsPost({ to: phone, content: `Academic results for ${term} are now available for ${studentName}. Login to view details.`, credentials });
+}
+
+async function sendAssignmentAlert(phone, studentName, assignmentTitle, credentials) {
+  return sendSmsPost({ to: phone, content: `New assignment "${assignmentTitle}" posted for ${studentName}. Check your dashboard for details.`, credentials });
 }
 
 // Check Hubtel SMS account balance / credits
@@ -148,4 +156,6 @@ module.exports = {
   sendAttendanceAlert,
   sendLowBalanceAlert,
   sendSubscriptionAlert,
+  sendResultAlert,
+  sendAssignmentAlert,
 };

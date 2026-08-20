@@ -7,24 +7,27 @@ const router = Router();
 
 router.get('/', authenticate, async (req, res) => {
   try {
-    const notifications = await prisma.notification.findMany({
-      where: { userId: req.user.id, schoolId: req.schoolId },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-    res.json(notifications);
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const offset = parseInt(req.query.offset) || 0;
+    const [notifications, total] = await Promise.all([
+      prisma.notification.findMany({
+        where: { userId: req.user.id, schoolId: req.schoolId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      prisma.notification.count({ where: { userId: req.user.id, schoolId: req.schoolId } }),
+    ]);
+    res.json({ notifications, total, unreadCount: await prisma.notification.count({ where: { userId: req.user.id, schoolId: req.schoolId, read: false } }) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/:id/read', authenticate, async (req, res) => {
+router.get('/unread-count', authenticate, async (req, res) => {
   try {
-    await prisma.notification.updateMany({
-      where: { id: req.params.id, userId: req.user.id },
-      data: { read: true },
-    });
-    res.json({ message: 'Marked as read' });
+    const count = await prisma.notification.count({ where: { userId: req.user.id, schoolId: req.schoolId, read: false } });
+    res.json({ count });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -37,6 +40,18 @@ router.put('/read-all', authenticate, async (req, res) => {
       data: { read: true },
     });
     res.json({ message: 'All marked as read' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/:id/read', authenticate, async (req, res) => {
+  try {
+    await prisma.notification.updateMany({
+      where: { id: req.params.id, userId: req.user.id },
+      data: { read: true },
+    });
+    res.json({ message: 'Marked as read' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
