@@ -67,11 +67,14 @@ const templateRoutes = require('./routes/templates');
 const preferenceRoutes = require('./routes/notification-preferences');
 const emailCampaignRoutes = require('./routes/email-campaigns');
 const smsDeliveryRoutes = require('./routes/sms-delivery');
+const tutorAuthRoutes = require('./routes/tutor-auth');
+const tutorAIRoutes = require('./routes/tutor-ai');
+const tutorSubRoutes = require('./routes/tutor-subscription');
 const prisma = require('./lib/prisma');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,https://school-saas-fawn.vercel.app,https://eduplatformsoftware.com,https://www.eduplatformsoftware.com').split(',').map(s => s.trim());
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,https://school-saas-fawn.vercel.app,https://eduplatformsoftware.com,https://www.eduplatformsoftware.com,https://teacherkofi.com,https://www.teacherkofi.com').split(',').map(s => s.trim());
 
 app.use(helmet());
 app.use(cors({
@@ -157,6 +160,9 @@ app.use('/api/templates', templateRoutes);
 app.use('/api/notification-preferences', preferenceRoutes);
 app.use('/api/email-campaigns', emailCampaignRoutes);
 app.use('/api/sms-delivery', smsDeliveryRoutes);
+app.use('/api/tutor/auth', authLimiter, tutorAuthRoutes);
+app.use('/api/tutor/ai', tutorAIRoutes);
+app.use('/api/tutor/subscription', tutorSubRoutes);
 
 const path = require('path');
 const fs = require('fs');

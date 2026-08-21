@@ -1078,3 +1078,34 @@ model RecurringInvoice {
 
   school School @relation(fields: [schoolId], references: [id])
 }
+
+// === STANDALONE TEACHER KOFI ===
+
+model TutorUser {
+  id              String    @id @default(cuid())
+  name            String
+  email           String    @unique
+  password        String
+  plan            String    @default("free")
+  paystackCustomerCode  String?
+  paystackSubscriptionCode String?
+  paystackPlan    String?
+  subscriptionStart DateTime?
+  subscriptionEnd   DateTime?
+  dailyUsage      Int       @default(0)
+  dailyUsageDate  String    @default("")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  conversations TutorConversation[]
+}
+
+model TutorConversation {
+  id          String   @id @default(cuid())
+  userId      String
+  userMessage String
+  aiResponse  String
+  createdAt   DateTime @default(now())
+
+  user TutorUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

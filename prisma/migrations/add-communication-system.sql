@@ -114,3 +114,40 @@ ALTER TABLE "ConversationMessage" ADD CONSTRAINT "ConversationMessage_conversati
 ALTER TABLE "MessageDelivery" ADD CONSTRAINT "MessageDelivery_schoolId_fkey" FOREIGN KEY ("schoolId") REFERENCES "School"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "MessageTemplate" ADD CONSTRAINT "MessageTemplate_schoolId_fkey" FOREIGN KEY ("schoolId") REFERENCES "School"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "ScheduledMessage" ADD CONSTRAINT "ScheduledMessage_schoolId_fkey" FOREIGN KEY ("schoolId") REFERENCES "School"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- === STANDALONE TEACHER KOFI ===
+
+-- TutorUser
+CREATE TABLE IF NOT EXISTS "TutorUser" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "password" TEXT NOT NULL,
+    "plan" TEXT NOT NULL DEFAULT 'free',
+    "paystackCustomerCode" TEXT,
+    "paystackSubscriptionCode" TEXT,
+    "paystackPlan" TEXT,
+    "subscriptionStart" TIMESTAMP(3),
+    "subscriptionEnd" TIMESTAMP(3),
+    "dailyUsage" INTEGER NOT NULL DEFAULT 0,
+    "dailyUsageDate" TEXT NOT NULL DEFAULT '',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "TutorUser_pkey" PRIMARY KEY ("id")
+);
+
+-- TutorConversation
+CREATE TABLE IF NOT EXISTS "TutorConversation" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "userMessage" TEXT NOT NULL,
+    "aiResponse" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "TutorConversation_pkey" PRIMARY KEY ("id")
+);
+
+-- TutorUser unique index
+CREATE UNIQUE INDEX IF NOT EXISTS "TutorUser_email_key" ON "TutorUser"("email");
+
+-- TutorConversation FK
+ALTER TABLE "TutorConversation" ADD CONSTRAINT "TutorConversation_userId_fkey" FOREIGN KEY ("userId") REFERENCES "TutorUser"("id") ON DELETE CASCADE ON UPDATE CASCADE;
