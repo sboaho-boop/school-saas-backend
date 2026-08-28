@@ -25,6 +25,6 @@ services:
       - key: PAYSTACK_PLAN_UNLIMITED_CODE
         sync: false
       - key: PAYSTACK_PLAN_PRO_AMOUNT
-        value: "999"
+        value: "19"
       - key: PAYSTACK_PLAN_UNLIMITED_AMOUNT
-        value: "1999"
+        value: "39"

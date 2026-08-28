@@ -11,13 +11,13 @@ const PAYSTACK_BASE = 'https://api.paystack.co';
 const PLANS = {
   pro: {
     planCode: process.env.PAYSTACK_PLAN_PRO_CODE || 'pro',
-    amount: Number(process.env.PAYSTACK_PLAN_PRO_AMOUNT) || 999,
+    amount: Number(process.env.PAYSTACK_PLAN_PRO_AMOUNT) || 19,
     name: 'Teacher Kofi Pro',
     interval: 'monthly',
   },
   unlimited: {
     planCode: process.env.PAYSTACK_PLAN_UNLIMITED_CODE || 'unlimited',
-    amount: Number(process.env.PAYSTACK_PLAN_UNLIMITED_AMOUNT) || 1999,
+    amount: Number(process.env.PAYSTACK_PLAN_UNLIMITED_AMOUNT) || 39,
     name: 'Teacher Kofi Unlimited',
     interval: 'monthly',
   },
