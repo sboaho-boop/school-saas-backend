@@ -3,8 +3,15 @@ services:
     name: eduplatform-backend
     runtime: node
     plan: free
+    # NOTE: upgrade to at least a paid plan before official launch --
+    # free instances spin down after inactivity (cold starts) and free
+    # Postgres has no automated backups.
     buildCommand: npm install && npx prisma generate
-    startCommand: npx prisma db push --accept-data-loss && node src/index.js
+    startCommand: node scripts/migrate.js && node src/index.js
+    disk:
+      name: uploads-data
+      mountPath: /var/data/uploads
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
@@ -13,7 +20,7 @@ services:
       - key: DIRECT_URL
         sync: false
       - key: JWT_SECRET
-        sync: false
+        value: xwLsLUMI0doNJ0X8mLoFCnaplsam1dDlkcGzTzG5eNGB9QOT2t4jLan9oAHxuWdC
       - key: BASE_URL
         sync: false
       - key: PAYSTACK_SECRET_KEY
@@ -28,3 +35,5 @@ services:
         value: "19"
       - key: PAYSTACK_PLAN_UNLIMITED_AMOUNT
         value: "39"
+      - key: UPLOAD_DIR
+        value: /var/data/uploads

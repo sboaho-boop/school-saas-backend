@@ -11,7 +11,8 @@
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:push": "npx prisma db push --accept-data-loss",
     "seed": "node src/seed.js",
-    "seed:big": "node src/big-seed.js"
+    "seed:big": "node src/big-seed.js",
+    "test": "node --test tests/ai-helpers.test.js"
   },
   "keywords": [],
   "author": "",

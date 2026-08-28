@@ -72,9 +72,28 @@ const tutorAIRoutes = require('./routes/tutor-ai');
 const tutorSubRoutes = require('./routes/tutor-subscription');
 const prisma = require('./lib/prisma');
 
+app.set('trust proxy', 1);
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,https://school-saas-fawn.vercel.app,https://eduplatformsoftware.com,https://www.eduplatformsoftware.com,https://teacherkofi.com,https://www.teacherkofi.com').split(',').map(s => s.trim());
+
+if (process.env.NODE_ENV === 'production') {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret || jwtSecret === 'fallback-secret' || jwtSecret === 'teacher-kofi-secret' || jwtSecret.length < 24) {
+    console.warn('=================================================================');
+    console.warn('WARNING: JWT_SECRET is missing or weak. You MUST set a strong');
+    console.warn('JWT_SECRET (>= 24 chars) in the Render dashboard or tokens are forgeable.');
+    console.warn('=================================================================');
+  }
+}
+
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
 
 app.use(helmet());
 app.use(cors({
@@ -168,7 +187,8 @@ app.use('/api/tutor/upload', require('./routes/tutor-upload'));
 const path = require('path');
 const fs = require('fs');
 const uploadDir = process.env.UPLOAD_DIR || (process.env.RAILWAY_VOLUME_MOUNT ? path.join(process.env.RAILWAY_VOLUME_MOUNT, 'uploads') : path.join(__dirname, '..', 'uploads'));
-if (fs.existsSync(uploadDir)) app.use('/uploads', express.static(uploadDir));
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+app.use('/uploads', express.static(uploadDir, { maxAge: '1d', immutable: true, fallthrough: false }));
 
 app.get('/api/audit-logs', require('./middleware/auth').authenticate, require('./middleware/auth').requireRole('headteacher', 'admin'), async (req, res) => {
   try {
@@ -179,9 +199,16 @@ app.get('/api/audit-logs', require('./middleware/auth').authenticate, require('.
   }
 });
 
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ error: 'Internal server error' });
+  const status = err.status || (err.type === 'entity.parse.failed' ? 400 : 500);
+  const message = err.type === 'entity.parse.failed' ? 'Invalid JSON in request body' : (err.status ? err.message : 'Internal server error');
+  if (status >= 500) console.error('[error]', req.method, req.originalUrl, err.message);
+  res.status(status).json({ error: message });
 });
 
 try {
