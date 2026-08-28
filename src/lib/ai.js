@@ -1,5 +1,14 @@
 const OpenAI = require('openai');
+const path = require('path');
+const fs = require('fs');
 const prisma = require('./prisma');
+
+const UPLOAD_DIR = process.env.UPLOAD_DIR || (process.env.RAILWAY_VOLUME_MOUNT ? path.join(process.env.RAILWAY_VOLUME_MOUNT, 'uploads') : path.join(__dirname, '..', '..', 'uploads'));
+
+const MIME_BY_EXT = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+  '.gif': 'image/gif', '.heic': 'image/heic', '.avif': 'image/avif', '.bmp': 'image/bmp',
+};
 
 const SYSTEM_PROMPT = `You are "Teacher Kofi", a warm, world-class AI tutor for students in Ghana (ages 4-16). Your job is to make learning joyful, clear, and personal.
 
@@ -105,27 +114,70 @@ async function checkAILimit(schoolId) {
   }
 }
 
-function geminiContents(messages) {
+async function toInlineData(loc) {
+  if (!loc) return null;
+  try {
+    if (typeof loc === 'string' && loc.startsWith('data:')) {
+      const m = loc.match(/^data:([^;,]+);base64,(.*)$/s);
+      if (m) return { mime_type: m[1] || 'image/png', data: m[2] };
+      return null;
+    }
+    let buf;
+    let mime = 'image/jpeg';
+    if (/^https?:\/\//i.test(loc)) {
+      const r = await fetch(loc);
+      if (!r.ok) return null;
+      buf = Buffer.from(await r.arrayBuffer());
+      mime = r.headers.get('content-type') || mime;
+    } else {
+      const clean = String(loc).replace(/^\//, '').replace(/^uploads\//, '');
+      buf = fs.readFileSync(path.join(UPLOAD_DIR, clean));
+      mime = MIME_BY_EXT[path.extname(clean).toLowerCase()] || mime;
+    }
+    return { mime_type: mime, data: buf.toString('base64') };
+  } catch (err) {
+    console.error('Image resolve error:', err.message);
+    return null;
+  }
+}
+
+async function geminiContents(messages) {
   const systemMsg = messages.find(m => m.role === 'system');
   const userMessages = messages.filter(m => m.role !== 'system');
-  const lastUserMsg = userMessages[userMessages.length - 1]?.content || '';
+  const last = userMessages[userMessages.length - 1] || {};
+  let hasImage = false;
 
   const contents = [];
   for (const msg of userMessages.slice(0, -1)) {
-    contents.push({
-      role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }],
-    });
+    const parts = [];
+    if (msg.content) parts.push({ text: msg.content });
+    if (msg.image) {
+      const part = await toInlineData(msg.image);
+      if (part) { parts.push({ inline_data: part }); hasImage = true; }
+    }
+    contents.push({ role: msg.role === 'assistant' ? 'model' : 'user', parts: parts.length ? parts : [{ text: '' }] });
   }
-  contents.push({ role: 'user', parts: [{ text: lastUserMsg }] });
-  return { systemText: systemMsg?.content || SYSTEM_PROMPT, contents };
+
+  const lastParts = [];
+  if (last.content) lastParts.push({ text: last.content });
+  if (last.image) {
+    const part = await toInlineData(last.image);
+    if (part) { lastParts.push({ inline_data: part }); hasImage = true; }
+  }
+  contents.push({ role: 'user', parts: lastParts.length ? lastParts : [{ text: '' }] });
+
+  let systemText = systemMsg?.content || SYSTEM_PROMPT;
+  if (hasImage) {
+    systemText += '\n\nThe student has attached a real photo or picture. Look at it closely: describe it kindly, help with their question about it, or teach from it. Keep it short, friendly, and appropriate.';
+  }
+  return { systemText, contents };
 }
 
 async function generateAIReply(messages, schoolId) {
   // Try Gemini first (free tier)
   if (process.env.GEMINI_API_KEY) {
     try {
-      const { systemText, contents } = geminiContents(messages);
+      const { systemText, contents } = await geminiContents(messages);
 
       const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
       const res = await fetch(
@@ -180,7 +232,7 @@ async function* streamAIReply(messages) {
   // Try Gemini first (streaming SSE)
   if (process.env.GEMINI_API_KEY) {
     try {
-      const { systemText, contents } = geminiContents(messages);
+      const { systemText, contents } = await geminiContents(messages);
       const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
       const res = await fetch(

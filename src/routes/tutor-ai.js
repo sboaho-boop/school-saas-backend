@@ -39,7 +39,7 @@ async function persistTutorUsage(userId, nextUsed, isNewDay, createConversation)
 
 router.post('/chat', async (req, res) => {
   try {
-    const { message, history } = req.body;
+    const { message, history, image } = req.body;
     if (!message) return res.status(400).json({ error: 'Message required' });
 
     const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { name: true, plan: true, dailyUsage: true, dailyUsageDate: true } });
@@ -49,10 +49,12 @@ router.post('/chat', async (req, res) => {
     }
 
     const languageCode = detectLanguage(message);
+    const userMsg = { role: 'user', content: message };
+    if (image) userMsg.image = image;
     const messages = [
       { role: 'system', content: buildKofiSystem({ name: user?.name, languageCode }) },
       ...(history || []).slice(-20),
-      { role: 'user', content: message },
+      userMsg,
     ];
 
     const reply = await generateAIReply(messages);
@@ -72,7 +74,7 @@ router.post('/chat', async (req, res) => {
 
 router.post('/chat/stream', async (req, res) => {
   try {
-    const { message, history } = req.body;
+    const { message, history, image } = req.body;
     if (!message) return res.status(400).json({ error: 'Message required' });
 
     const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { name: true, plan: true, dailyUsage: true, dailyUsageDate: true } });
@@ -82,10 +84,12 @@ router.post('/chat/stream', async (req, res) => {
     }
 
     const languageCode = detectLanguage(message);
+    const userMsg = { role: 'user', content: message };
+    if (image) userMsg.image = image;
     const messages = [
       { role: 'system', content: buildKofiSystem({ name: user?.name, languageCode }) },
       ...(history || []).slice(-20),
-      { role: 'user', content: message },
+      userMsg,
     ];
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -127,16 +131,18 @@ router.post('/chat/stream', async (req, res) => {
   }
 });
 
-function buildImagePrompt(prompt) {
-  const safe = String(prompt || '').trim().slice(0, 500);
-  return (safe || 'a happy Ghanaian child studying')
-    + '. Style: bright, friendly, child-friendly cartoon illustration for a young student (ages 4-16). '
-    + 'Colorful, wholesome, educational. No scary, violent, or inappropriate content. No extra text.';
+function buildImagePrompt(prompt, style) {
+  const safe = String(prompt || '').trim().slice(0, 500) || 'a happy Ghanaian child studying';
+  const real = style === 'real';
+  const base = real
+    ? safe + '. Style: realistic photograph, sharp focus, natural lighting, high detail.'
+    : safe + '. Style: bright, friendly, child-friendly cartoon illustration for a young student (ages 4-16).';
+  return base + ' Colorful, wholesome, educational. No scary, violent, or inappropriate content. No extra text.';
 }
 
 router.post('/image', async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const { prompt, style } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Describe the picture you want.' });
 
     const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { plan: true, dailyUsage: true, dailyUsageDate: true } });
@@ -145,7 +151,7 @@ router.post('/image', async (req, res) => {
       return res.status(403).json({ error: 'Daily limit reached (' + limit.used + '/' + limit.limit + '). Upgrade for more.', limit });
     }
 
-    const imagePrompt = buildImagePrompt(prompt);
+    const imagePrompt = buildImagePrompt(prompt, style);
     let imageData = null;
 
     // Primary: OpenAI DALL-E 3

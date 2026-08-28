@@ -163,6 +163,7 @@ app.use('/api/sms-delivery', smsDeliveryRoutes);
 app.use('/api/tutor/auth', authLimiter, tutorAuthRoutes);
 app.use('/api/tutor/ai', tutorAIRoutes);
 app.use('/api/tutor/subscription', tutorSubRoutes);
+app.use('/api/tutor/upload', require('./routes/tutor-upload'));
 
 const path = require('path');
 const fs = require('fs');
