@@ -105,22 +105,27 @@ async function checkAILimit(schoolId) {
   }
 }
 
+function geminiContents(messages) {
+  const systemMsg = messages.find(m => m.role === 'system');
+  const userMessages = messages.filter(m => m.role !== 'system');
+  const lastUserMsg = userMessages[userMessages.length - 1]?.content || '';
+
+  const contents = [];
+  for (const msg of userMessages.slice(0, -1)) {
+    contents.push({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content }],
+    });
+  }
+  contents.push({ role: 'user', parts: [{ text: lastUserMsg }] });
+  return { systemText: systemMsg?.content || SYSTEM_PROMPT, contents };
+}
+
 async function generateAIReply(messages, schoolId) {
   // Try Gemini first (free tier)
   if (process.env.GEMINI_API_KEY) {
     try {
-      const systemMsg = messages.find(m => m.role === 'system');
-      const userMessages = messages.filter(m => m.role !== 'system');
-      const lastUserMsg = userMessages[userMessages.length - 1]?.content || '';
-
-      const contents = [];
-      for (const msg of userMessages.slice(0, -1)) {
-        contents.push({
-          role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: msg.content }],
-        });
-      }
-      contents.push({ role: 'user', parts: [{ text: lastUserMsg }] });
+      const { systemText, contents } = geminiContents(messages);
 
       const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
       const res = await fetch(
@@ -129,11 +134,11 @@ async function generateAIReply(messages, schoolId) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemMsg?.content || SYSTEM_PROMPT }] },
+            system_instruction: { parts: [{ text: systemText }] },
             contents,
             generationConfig: {
               temperature: 0.7,
-              maxOutputTokens: 1200,
+              maxOutputTokens: 900,
               topP: 0.9,
             },
           }),
@@ -171,4 +176,85 @@ async function generateAIReply(messages, schoolId) {
   return null;
 }
 
-module.exports = { SYSTEM_PROMPT, generateAIReply, checkAILimit, detectLanguage, buildKofiSystem, LANGUAGE_NAMES };
+async function* streamAIReply(messages) {
+  // Try Gemini first (streaming SSE)
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const { systemText, contents } = geminiContents(messages);
+      const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemText }] },
+            contents,
+            generationConfig: { temperature: 0.7, maxOutputTokens: 900, topP: 0.9 },
+          }),
+        }
+      );
+
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let emitted = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let sep;
+          while ((sep = buffer.indexOf('\n\n')) !== -1) {
+            const event = buffer.slice(0, sep);
+            buffer = buffer.slice(sep + 2);
+            for (const line of event.split('\n')) {
+              if (!line.startsWith('data:')) continue;
+              const payload = line.slice(5).trim();
+              if (!payload) continue;
+              try {
+                const json = JSON.parse(payload);
+                const part = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (part) {
+                  emitted += part.length;
+                  yield part;
+                } else if (json?.error) {
+                  console.error('Gemini stream error:', json.error.message);
+                }
+              } catch { /* partial line */ }
+            }
+          }
+        }
+        if (emitted > 0) return;
+      } else {
+        const text = await res.text();
+        console.error('Gemini stream HTTP error:', res.status, text.slice(0, 200));
+      }
+    } catch (err) {
+      console.error('Gemini stream error:', err.message);
+    }
+  }
+
+  // Fallback: OpenAI streaming
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const stream = await ai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages,
+        max_tokens: 900,
+        temperature: 0.7,
+        stream: true,
+      });
+      for await (const chunk of stream) {
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (delta) yield delta;
+      }
+    } catch (err) {
+      console.error('OpenAI stream error:', err.message);
+    }
+  }
+}
+
+module.exports = { SYSTEM_PROMPT, generateAIReply, streamAIReply, checkAILimit, detectLanguage, buildKofiSystem, LANGUAGE_NAMES };

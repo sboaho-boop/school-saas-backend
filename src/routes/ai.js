@@ -47,7 +47,7 @@ router.post('/chat', async (req, res) => {
     const reply = await generateAIReply(messages);
     if (!reply) return res.status(503).json({ error: 'AI service not configured. Set GEMINI_API_KEY or OPENAI_API_KEY.' });
 
-    await prisma.aIConversation.create({
+    prisma.aIConversation.create({
       data: {
         schoolId: req.schoolId,
         userId: req.user.id,

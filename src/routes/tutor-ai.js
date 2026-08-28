@@ -1,4 +1,4 @@
-const { generateAIReply, detectLanguage, buildKofiSystem } = require('../lib/ai');
+const { generateAIReply, streamAIReply, detectLanguage, buildKofiSystem } = require('../lib/ai');
 const { Router } = require('express');
 const multer = require('multer');
 const OpenAI = require('openai');
@@ -21,32 +21,20 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function checkTutorLimit(userId) {
-  const user = await prisma.tutorUser.findUnique({
-    where: { id: userId },
-    select: { plan: true, dailyUsage: true, dailyUsageDate: true },
-  });
+function computeTutorLimit(user) {
   const plan = user?.plan || 'free';
   const limit = TUTOR_AI_LIMITS[plan] ?? TUTOR_AI_LIMITS.free;
-  if (limit === -1) return { allowed: true, plan, remaining: -1 };
-
   const today = todayKey();
-  let usage = user?.dailyUsage || 0;
-  if (user?.dailyUsageDate !== today) {
-    await prisma.tutorUser.update({ where: { id: userId }, data: { dailyUsage: 0, dailyUsageDate: today } });
-    usage = 0;
-  }
-  return { allowed: usage < limit, plan, remaining: Math.max(0, limit - usage), used: usage, limit };
+  let used = user?.dailyUsage || 0;
+  const isNewDay = user?.dailyUsageDate !== today;
+  if (isNewDay) used = 0;
+  return { plan, limit, used, isNewDay, allowed: limit === -1 ? true : used < limit, remaining: limit === -1 ? -1 : Math.max(0, limit - used) };
 }
 
-async function incrementUsage(userId) {
+async function persistTutorUsage(userId, nextUsed, isNewDay, createConversation) {
   const today = todayKey();
-  const user = await prisma.tutorUser.findUnique({ where: { id: userId }, select: { dailyUsage: true, dailyUsageDate: true } });
-  if (user?.dailyUsageDate !== today) {
-    await prisma.tutorUser.update({ where: { id: userId }, data: { dailyUsage: 1, dailyUsageDate: today } });
-  } else {
-    await prisma.tutorUser.update({ where: { id: userId }, data: { dailyUsage: { increment: 1 } } });
-  }
+  await prisma.tutorUser.update({ where: { id: userId }, data: { dailyUsage: nextUsed, dailyUsageDate: today } });
+  if (createConversation) await prisma.tutorConversation.create(createConversation);
 }
 
 router.post('/chat', async (req, res) => {
@@ -54,14 +42,13 @@ router.post('/chat', async (req, res) => {
     const { message, history } = req.body;
     if (!message) return res.status(400).json({ error: 'Message required' });
 
-    const limit = await checkTutorLimit(req.userId);
+    const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { name: true, plan: true, dailyUsage: true, dailyUsageDate: true } });
+    const limit = computeTutorLimit(user);
     if (!limit.allowed) {
       return res.status(403).json({ error: 'Daily limit reached (' + limit.used + '/' + limit.limit + '). Upgrade for more.', limit });
     }
 
-    const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { name: true } });
     const languageCode = detectLanguage(message);
-
     const messages = [
       { role: 'system', content: buildKofiSystem({ name: user?.name, languageCode }) },
       ...(history || []).slice(-20),
@@ -71,16 +58,72 @@ router.post('/chat', async (req, res) => {
     const reply = await generateAIReply(messages);
     if (!reply) return res.status(503).json({ error: 'AI service not configured.' });
 
-    await prisma.tutorConversation.create({
+    const remaining = limit.remaining === -1 ? -1 : Math.max(0, limit.remaining - 1);
+    persistTutorUsage(req.userId, limit.isNewDay ? 1 : limit.used + 1, limit.isNewDay, {
       data: { userId: req.userId, userMessage: message, aiResponse: reply },
     }).catch(() => {});
 
-    await incrementUsage(req.userId);
-    const updatedLimit = await checkTutorLimit(req.userId);
-    res.json({ reply, remaining: updatedLimit.remaining });
+    res.json({ reply, remaining });
   } catch (err) {
     console.error('Tutor AI chat error:', err.message);
     res.status(500).json({ error: err.message || 'AI service unavailable' });
+  }
+});
+
+router.post('/chat/stream', async (req, res) => {
+  try {
+    const { message, history } = req.body;
+    if (!message) return res.status(400).json({ error: 'Message required' });
+
+    const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { name: true, plan: true, dailyUsage: true, dailyUsageDate: true } });
+    const limit = computeTutorLimit(user);
+    if (!limit.allowed) {
+      return res.status(403).json({ error: 'Daily limit reached (' + limit.used + '/' + limit.limit + '). Upgrade for more.', limit });
+    }
+
+    const languageCode = detectLanguage(message);
+    const messages = [
+      { role: 'system', content: buildKofiSystem({ name: user?.name, languageCode }) },
+      ...(history || []).slice(-20),
+      { role: 'user', content: message },
+    ];
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    let aborted = false;
+    req.on('close', () => { aborted = true; });
+    const send = (obj) => { if (!aborted) res.write('data: ' + JSON.stringify(obj) + '\n\n'); };
+
+    let text = '';
+    for await (const token of streamAIReply(messages)) {
+      if (aborted) break;
+      text += token;
+      send({ token });
+    }
+
+    if (!text.trim()) {
+      if (!aborted) send({ error: 'AI service not configured.' });
+      res.end();
+      return;
+    }
+
+    const remaining = limit.remaining === -1 ? -1 : Math.max(0, limit.remaining - 1);
+    send({ done: true, remaining });
+    res.end();
+
+    if (!aborted) {
+      persistTutorUsage(req.userId, limit.isNewDay ? 1 : limit.used + 1, limit.isNewDay, {
+        data: { userId: req.userId, userMessage: message, aiResponse: text },
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.error('Tutor AI stream error:', err.message);
+    if (!res.headersSent) return res.status(500).json({ error: err.message || 'AI service unavailable' });
+    res.end();
   }
 });
 
@@ -96,7 +139,8 @@ router.post('/image', async (req, res) => {
     const { prompt } = req.body;
     if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Describe the picture you want.' });
 
-    const limit = await checkTutorLimit(req.userId);
+    const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { plan: true, dailyUsage: true, dailyUsageDate: true } });
+    const limit = computeTutorLimit(user);
     if (!limit.allowed) {
       return res.status(403).json({ error: 'Daily limit reached (' + limit.used + '/' + limit.limit + '). Upgrade for more.', limit });
     }
@@ -138,13 +182,12 @@ router.post('/image', async (req, res) => {
 
     if (!imageData) return res.status(503).json({ error: 'Image generation is not available right now. Try again later.' });
 
-    await prisma.tutorConversation.create({
+    const remaining = limit.remaining === -1 ? -1 : Math.max(0, limit.remaining - 1);
+    persistTutorUsage(req.userId, limit.isNewDay ? 1 : limit.used + 1, limit.isNewDay, {
       data: { userId: req.userId, userMessage: '[image] ' + prompt, aiResponse: '[generated image] ' + prompt },
     }).catch(() => {});
 
-    await incrementUsage(req.userId);
-    const updatedLimit = await checkTutorLimit(req.userId);
-    res.json({ imageData, prompt, remaining: updatedLimit.remaining });
+    res.json({ imageData, prompt, remaining });
   } catch (err) {
     console.error('Tutor AI image error:', err.message);
     res.status(500).json({ error: err.message || 'Image generation failed' });
@@ -158,7 +201,8 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
 
     if (!req.file) return res.status(400).json({ error: 'Audio file required' });
 
-    const limit = await checkTutorLimit(req.userId);
+    const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { name: true, plan: true, dailyUsage: true, dailyUsageDate: true } });
+    const limit = computeTutorLimit(user);
     if (!limit.allowed) {
       return res.status(403).json({ error: 'Daily limit reached (' + limit.used + '/' + limit.limit + '). Upgrade for more.', limit });
     }
@@ -178,8 +222,6 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
     if (!transcribed.trim()) {
       return res.status(400).json({ error: 'Could not understand the audio.' });
     }
-
-    const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { name: true } });
     const parsedHistory = typeof history === 'string' ? JSON.parse(history || '[]') : (history || []);
     const messages = [
       { role: 'system', content: buildKofiSystem({ name: user?.name, languageCode: lang, voice: true }) },
@@ -190,13 +232,12 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
     const reply = await generateAIReply(messages);
     if (!reply) return res.status(503).json({ error: 'AI service not configured.' });
 
-    await prisma.tutorConversation.create({
+    const remaining = limit.remaining === -1 ? -1 : Math.max(0, limit.remaining - 1);
+    persistTutorUsage(req.userId, limit.isNewDay ? 1 : limit.used + 1, limit.isNewDay, {
       data: { userId: req.userId, userMessage: '[voice/' + lang + '] ' + transcribed, aiResponse: reply },
     }).catch(() => {});
 
-    await incrementUsage(req.userId);
-    const updatedLimit = await checkTutorLimit(req.userId);
-    res.json({ transcribed, reply, language: lang, remaining: updatedLimit.remaining });
+    res.json({ transcribed, reply, language: lang, remaining });
   } catch (err) {
     console.error('[tutor voice] Error:', err.message);
     res.status(500).json({ error: err.message || 'Voice processing failed' });

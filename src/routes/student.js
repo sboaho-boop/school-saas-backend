@@ -212,7 +212,7 @@ router.post('/ai/chat', authenticateStudent, async (req, res) => {
     const reply = await generateAIReply(messages, req.schoolId);
     if (!reply) return res.status(503).json({ error: 'AI tutor not configured yet. Contact your school administrator.' });
 
-    await prisma.aIConversation.create({
+    prisma.aIConversation.create({
       data: {
         schoolId: req.schoolId,
         userId: req.studentId,
