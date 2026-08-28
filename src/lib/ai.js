@@ -200,32 +200,43 @@ async function* streamAIReply(messages) {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let pending = [];
         let emitted = 0;
+        const flushEvent = () => {
+          if (pending.length === 0) return;
+          const payload = pending.join('\n');
+          pending = [];
+          if (!payload.trim()) return;
+          try {
+            const json = JSON.parse(payload);
+            const part = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (part) {
+              emitted += part.length;
+              return part;
+            }
+            if (json?.error) console.error('Gemini stream error:', json.error.message);
+          } catch { /* partial data */ }
+          return null;
+        };
+
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          let sep;
-          while ((sep = buffer.indexOf('\n\n')) !== -1) {
-            const event = buffer.slice(0, sep);
-            buffer = buffer.slice(sep + 2);
-            for (const line of event.split('\n')) {
-              if (!line.startsWith('data:')) continue;
-              const payload = line.slice(5).trim();
-              if (!payload) continue;
-              try {
-                const json = JSON.parse(payload);
-                const part = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (part) {
-                  emitted += part.length;
-                  yield part;
-                } else if (json?.error) {
-                  console.error('Gemini stream error:', json.error.message);
-                }
-              } catch { /* partial line */ }
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+          let idx;
+          while ((idx = buffer.indexOf('\n')) !== -1) {
+            const line = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 1);
+            if (line === '') {
+              const text = flushEvent();
+              if (text) yield text;
+            } else if (line.startsWith('data:')) {
+              pending.push(line.slice(5).trim());
             }
           }
         }
+        const tail = flushEvent();
+        if (tail) yield tail;
         if (emitted > 0) return;
       } else {
         const text = await res.text();
