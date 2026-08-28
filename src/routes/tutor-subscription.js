@@ -9,9 +9,26 @@ const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || '';
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
 const PLANS = {
-  pro: { amount: 999, name: 'Teacher Kofi Pro', interval: 'monthly' },
-  unlimited: { amount: 1999, name: 'Teacher Kofi Unlimited', interval: 'monthly' },
+  pro: {
+    planCode: process.env.PAYSTACK_PLAN_PRO_CODE || 'pro',
+    amount: Number(process.env.PAYSTACK_PLAN_PRO_AMOUNT) || 999,
+    name: 'Teacher Kofi Pro',
+    interval: 'monthly',
+  },
+  unlimited: {
+    planCode: process.env.PAYSTACK_PLAN_UNLIMITED_CODE || 'unlimited',
+    amount: Number(process.env.PAYSTACK_PLAN_UNLIMITED_AMOUNT) || 1999,
+    name: 'Teacher Kofi Unlimited',
+    interval: 'monthly',
+  },
 };
+
+router.get('/plans', (req, res) => {
+  res.json({
+    pro: { id: 'pro', name: PLANS.pro.name, priceGHS: PLANS.pro.amount, interval: PLANS.pro.interval },
+    unlimited: { id: 'unlimited', name: PLANS.unlimited.name, priceGHS: PLANS.unlimited.amount, interval: PLANS.unlimited.interval },
+  });
+});
 
 router.post('/init', authenticateTutor, async (req, res) => {
   try {
@@ -31,7 +48,7 @@ router.post('/init', authenticateTutor, async (req, res) => {
       body: JSON.stringify({
         email: user.email,
         amount: planConfig.amount * 100,
-        plan: plan,
+        plan: planConfig.planCode,
         metadata: { userId: req.userId, plan, userName: user.name },
         callback_url: (process.env.FRONTEND_URL || 'http://localhost:3000') + '/tutor/dashboard?upgraded=1',
       }),

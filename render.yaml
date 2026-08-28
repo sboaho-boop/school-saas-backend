@@ -16,3 +16,15 @@ services:
         sync: false
       - key: BASE_URL
         sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: PAYSTACK_PLAN_PRO_CODE
+        sync: false
+      - key: PAYSTACK_PLAN_UNLIMITED_CODE
+        sync: false
+      - key: PAYSTACK_PLAN_PRO_AMOUNT
+        value: "999"
+      - key: PAYSTACK_PLAN_UNLIMITED_AMOUNT
+        value: "1999"
