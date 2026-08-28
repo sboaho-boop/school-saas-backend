@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const { signToken, verifyToken } = require('../lib/jwt');
 const { authenticate } = require('../middleware/auth');
-const { generateAIReply, checkAILimit, detectLanguage, buildKofiSystem } = require('../lib/ai');
+const { generateAIReply, checkAILimit, detectLanguage, buildKofiSystem, transcribeAudio } = require('../lib/ai');
 
 const router = Router();
 
@@ -243,10 +243,7 @@ router.get('/ai/history', authenticateStudent, async (req, res) => {
 
 // ─── Student AI Voice ──────────────────────────────────────
 const multer = require('multer');
-const OpenAI = require('openai');
 const voiceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-
-const VOICE_LANG_MAP = { en: 'en', fr: 'fr', tw: 'ak', ha: 'ha', ga: 'en', ewe: 'ee', fante: 'ak', dagbani: 'dag' };
 
 router.post('/ai/voice', authenticateStudent, voiceUpload.single('audio'), async (req, res) => {
   try {
@@ -260,23 +257,9 @@ router.post('/ai/voice', authenticateStudent, voiceUpload.single('audio'), async
       return res.status(403).json({ error: `AI tutor limit reached (${limit.used}/${limit.limit} today). Your school needs to upgrade to use more.`, limit });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(503).json({ error: 'Voice transcription not configured. Set OPENAI_API_KEY.' });
-    }
-
-    let transcribed = '';
-    try {
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const audioFile = new File([req.file.buffer], 'voice.webm', { type: req.file.mimetype || 'audio/webm' });
-      const transcription = await openai.audio.transcriptions.create({
-        model: 'whisper-1',
-        file: audioFile,
-        language: VOICE_LANG_MAP[lang] || 'en',
-      });
-      transcribed = transcription.text || '';
-    } catch (whisperErr) {
-      console.error('[student/voice] Whisper error:', whisperErr.message);
-      return res.status(500).json({ error: 'Failed to transcribe audio. Please try again or type your message.' });
+    const transcribed = await transcribeAudio(req.file.buffer, req.file.mimetype, lang);
+    if (!transcribed) {
+      return res.status(503).json({ error: 'Could not transcribe the audio right now. Please try again or type your message.' });
     }
 
     if (!transcribed.trim()) {

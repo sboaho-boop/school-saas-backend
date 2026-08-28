@@ -1,4 +1,4 @@
-const { generateAIReply, streamAIReply, detectLanguage, buildKofiSystem } = require('../lib/ai');
+const { generateAIReply, streamAIReply, transcribeAudio, detectLanguage, buildKofiSystem } = require('../lib/ai');
 const { Router } = require('express');
 const multer = require('multer');
 const OpenAI = require('openai');
@@ -8,11 +8,6 @@ const { authenticateTutor } = require('./tutor-auth');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const TUTOR_AI_LIMITS = { free: 5, pro: 100, unlimited: -1 };
-
-const LANGUAGES_FOR_WHISPER = {
-  en: 'en', fr: 'fr', tw: 'ak', ha: 'ha',
-  ga: 'en', ewe: 'ee', fante: 'ak', dagbani: 'dag',
-};
 
 const router = Router();
 router.use(authenticateTutor);
@@ -213,17 +208,10 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
       return res.status(403).json({ error: 'Daily limit reached (' + limit.used + '/' + limit.limit + '). Upgrade for more.', limit });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(503).json({ error: 'Voice not configured. Set OPENAI_API_KEY.' });
+    const transcribed = await transcribeAudio(req.file.buffer, req.file.mimetype, lang);
+    if (!transcribed) {
+      return res.status(503).json({ error: 'Could not transcribe the audio right now. Please try again or type your message.' });
     }
-
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const audioFile = new File([req.file.buffer], 'voice.webm', { type: req.file.mimetype || 'audio/webm' });
-    const whisperLang = LANGUAGES_FOR_WHISPER[lang] || 'en';
-    const transcription = await openai.audio.transcriptions.create({
-      model: 'whisper-1', file: audioFile, language: whisperLang,
-    });
-    const transcribed = transcription.text || '';
 
     if (!transcribed.trim()) {
       return res.status(400).json({ error: 'Could not understand the audio.' });

@@ -10,6 +10,14 @@ const MIME_BY_EXT = {
   '.gif': 'image/gif', '.heic': 'image/heic', '.avif': 'image/avif', '.bmp': 'image/bmp',
 };
 
+const WHISPER_LANG = { en: 'en', fr: 'fr', tw: 'ak', ha: 'ha', ga: 'en', ewe: 'ee', fante: 'ak', dagbani: 'dag' };
+
+const AUDIO_FILENAME_BY_MIME = {
+  'audio/wav': 'voice.wav', 'audio/x-wav': 'voice.wav', 'audio/wave': 'voice.wav',
+  'audio/mpeg': 'voice.mp3', 'audio/mp3': 'voice.mp3',
+  'audio/ogg': 'voice.ogg', 'audio/webm': 'voice.webm', 'audio/mp4': 'voice.m4a',
+};
+
 const SYSTEM_PROMPT = `You are "Teacher Kofi", a warm, world-class AI tutor for students in Ghana (ages 4-16). Your job is to make learning joyful, clear, and personal.
 
 PERSONALITY
@@ -173,6 +181,62 @@ async function geminiContents(messages) {
   return { systemText, contents };
 }
 
+async function transcribeAudio(buffer, mimeType, lang) {
+  const mime = String(mimeType || '').toLowerCase();
+
+  // Gemini first (free tier, no separate billing)
+  if (process.env.GEMINI_API_KEY && (mime.startsWith('audio/wav') || mime === 'audio/webm' || mime === 'audio/ogg' || mime === 'audio/mpeg' || mime.startsWith('audio/mp4'))) {
+    try {
+      const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+      const langName = LANGUAGE_NAMES[lang];
+      const hint = langName && langName !== 'English' ? ' The speaker is speaking in ' + langName + '.' : '';
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  { text: 'Transcribe everything the speaker says in this audio exactly as spoken. Output ONLY the transcribed words, no commentary, no quotation marks.' + hint },
+                  { inline_data: { mime_type: mime, data: buffer.toString('base64') } },
+                ],
+              },
+            ],
+            generationConfig: { temperature: 0.1, maxOutputTokens: 400 },
+          }),
+        }
+      );
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      return (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+    } catch (err) {
+      console.error('[transcribe] Gemini error:', err.message);
+    }
+  }
+
+  // Whisper fallback
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const filename = AUDIO_FILENAME_BY_MIME[mime] || 'voice.webm';
+      const audioFile = new File([buffer], filename, { type: mime || 'audio/webm' });
+      const transcription = await ai.audio.transcriptions.create({
+        model: 'whisper-1',
+        file: audioFile,
+        language: WHISPER_LANG[lang] || 'en',
+      });
+      return (transcription.text || '').trim();
+    } catch (err) {
+      console.error('[transcribe] Whisper error:', err.message);
+    }
+  }
+
+  return null;
+}
+
 async function generateAIReply(messages, schoolId) {
   // Try Gemini first (free tier)
   if (process.env.GEMINI_API_KEY) {
@@ -320,4 +384,4 @@ async function* streamAIReply(messages) {
   }
 }
 
-module.exports = { SYSTEM_PROMPT, generateAIReply, streamAIReply, checkAILimit, detectLanguage, buildKofiSystem, LANGUAGE_NAMES };
+module.exports = { SYSTEM_PROMPT, generateAIReply, streamAIReply, checkAILimit, detectLanguage, buildKofiSystem, transcribeAudio, LANGUAGE_NAMES };

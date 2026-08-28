@@ -1,33 +1,10 @@
 const { Router } = require('express');
 const multer = require('multer');
-const OpenAI = require('openai');
 const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
-const { generateAIReply, checkAILimit, buildKofiSystem } = require('../lib/ai');
+const { generateAIReply, checkAILimit, buildKofiSystem, transcribeAudio } = require('../lib/ai');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-
-const VOICE_LANGUAGE_MAP = {
-  en: 'en',
-  fr: 'fr',
-  tw: 'tw',
-  ha: 'ha',
-  ga: 'en',
-  ewe: 'en',
-  fante: 'en',
-  dagbani: 'en',
-};
-
-const LANGUAGES_FOR_WHISPER = {
-  en: 'en',
-  fr: 'fr',
-  tw: 'ak',     // Twi maps to Akan in Whisper
-  ha: 'ha',
-  ga: 'en',     // Ga fallback to English
-  ewe: 'ee',    // Ewe in Whisper
-  fante: 'ak',  // Fante maps to Akan in Whisper
-  dagbani: 'dag', // Dagbani in Whisper
-};
 
 const router = Router();
 router.use(authenticate);
@@ -54,24 +31,9 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
       });
     }
 
-    let transcribed = '';
-    if (process.env.OPENAI_API_KEY) {
-      try {
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        const audioFile = new File([req.file.buffer], 'voice.webm', { type: req.file.mimetype || 'audio/webm' });
-        const whisperLang = LANGUAGES_FOR_WHISPER[lang] || 'en';
-        const transcription = await openai.audio.transcriptions.create({
-          model: 'whisper-1',
-          file: audioFile,
-          language: whisperLang,
-        });
-        transcribed = transcription.text || '';
-      } catch (whisperErr) {
-        console.error('[voice] Whisper error:', whisperErr.message);
-        return res.status(500).json({ error: 'Failed to transcribe audio. Please try again or type your message.' });
-      }
-    } else {
-      return res.status(503).json({ error: 'Voice transcription not configured. Set OPENAI_API_KEY.' });
+    let transcribed = await transcribeAudio(req.file.buffer, req.file.mimetype, lang);
+    if (!transcribed) {
+      return res.status(503).json({ error: 'Could not transcribe the audio right now. Please try again or type your message.' });
     }
 
     if (!transcribed.trim()) {
