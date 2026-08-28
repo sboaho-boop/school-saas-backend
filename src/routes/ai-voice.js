@@ -3,7 +3,7 @@ const multer = require('multer');
 const OpenAI = require('openai');
 const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
-const { SYSTEM_PROMPT, generateAIReply, checkAILimit } = require('../lib/ai');
+const { generateAIReply, checkAILimit, buildKofiSystem } = require('../lib/ai');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -29,17 +29,6 @@ const LANGUAGES_FOR_WHISPER = {
   dagbani: 'dag', // Dagbani in Whisper
 };
 
-const LANGUAGE_NAMES = {
-  en: 'English',
-  fr: 'French',
-  tw: 'Twi',
-  ha: 'Hausa',
-  ga: 'Ga',
-  ewe: 'Ewe',
-  fante: 'Fante',
-  dagbani: 'Dagbani',
-};
-
 const router = Router();
 router.use(authenticate);
 
@@ -54,7 +43,6 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
   try {
     const { history, language, studentContext } = req.body;
     const lang = language || 'en';
-    const langName = LANGUAGE_NAMES[lang] || 'English';
 
     if (!req.file) return res.status(400).json({ error: 'Audio file required' });
 
@@ -95,15 +83,13 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
 
     let userContext = '';
     if (studentContext) {
-      userContext = `Student info: Grade ${studentContext.grade || 'unknown'}, Age ${studentContext.age || 'unknown'}`;
+      userContext = `\nStudent info: Grade ${studentContext.grade || 'unknown'}, Age ${studentContext.age || 'unknown'}`;
     }
-
-    const languageInstruction = `\nThe student is speaking in ${langName}. Please respond in ${langName}. Keep your spoken response natural and concise — this will be read aloud to the student.`;
 
     const parsedHistory = typeof history === 'string' ? JSON.parse(history || '[]') : (history || []);
 
     const messages = [
-      { role: 'system', content: `${SYSTEM_PROMPT}\n\n${schoolInfo}\n${userContext}${languageInstruction}` },
+      { role: 'system', content: buildKofiSystem({ name: studentContext?.name, languageCode: lang, voice: true }) + '\n' + schoolInfo + userContext },
       ...parsedHistory.slice(-20),
       { role: 'user', content: transcribed },
     ];

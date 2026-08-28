@@ -1,9 +1,9 @@
+const { generateAIReply, detectLanguage, buildKofiSystem } = require('../lib/ai');
 const { Router } = require('express');
 const multer = require('multer');
 const OpenAI = require('openai');
 const prisma = require('../lib/prisma');
 const { authenticateTutor } = require('./tutor-auth');
-const { SYSTEM_PROMPT, generateAIReply } = require('../lib/ai');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -12,11 +12,6 @@ const TUTOR_AI_LIMITS = { free: 5, pro: 100, unlimited: -1 };
 const LANGUAGES_FOR_WHISPER = {
   en: 'en', fr: 'fr', tw: 'ak', ha: 'ha',
   ga: 'en', ewe: 'ee', fante: 'ak', dagbani: 'dag',
-};
-
-const LANGUAGE_NAMES = {
-  en: 'English', fr: 'French', tw: 'Twi', ha: 'Hausa',
-  ga: 'Ga', ewe: 'Ewe', fante: 'Fante', dagbani: 'Dagbani',
 };
 
 const router = Router();
@@ -65,10 +60,10 @@ router.post('/chat', async (req, res) => {
     }
 
     const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { name: true } });
-    const userContext = 'Student name: ' + (user?.name || 'Student');
+    const languageCode = detectLanguage(message);
 
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT + '\n\n' + userContext },
+      { role: 'system', content: buildKofiSystem({ name: user?.name, languageCode }) },
       ...(history || []).slice(-20),
       { role: 'user', content: message },
     ];
@@ -93,7 +88,6 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
   try {
     const { history, language } = req.body;
     const lang = language || 'en';
-    const langName = LANGUAGE_NAMES[lang] || 'English';
 
     if (!req.file) return res.status(400).json({ error: 'Audio file required' });
 
@@ -119,12 +113,9 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
     }
 
     const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { name: true } });
-    const userContext = 'Student name: ' + (user?.name || 'Student');
-    const languageInstruction = '\nThe student is speaking in ' + langName + '. Please respond in ' + langName + '. Keep your spoken response natural and concise.';
-
     const parsedHistory = typeof history === 'string' ? JSON.parse(history || '[]') : (history || []);
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT + '\n\n' + userContext + languageInstruction },
+      { role: 'system', content: buildKofiSystem({ name: user?.name, languageCode: lang, voice: true }) },
       ...parsedHistory.slice(-20),
       { role: 'user', content: transcribed },
     ];

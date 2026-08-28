@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
-const { SYSTEM_PROMPT, generateAIReply, checkAILimit } = require('../lib/ai');
+const { generateAIReply, checkAILimit, detectLanguage, buildKofiSystem } = require('../lib/ai');
 
 const router = Router();
 router.use(authenticate);
@@ -27,15 +27,19 @@ router.post('/chat', async (req, res) => {
     }
 
     const context = await getSchoolContext(req.schoolId);
-    const schoolInfo = `School: ${context.schoolName} (${context.studentCount} students, ${context.staffCount} staff)`;
+    const schoolInfo = `\nSchool: ${context.schoolName} (${context.studentCount} students, ${context.staffCount} staff)`;
 
     let userContext = '';
     if (studentContext) {
-      userContext = `Student info: Grade ${studentContext.grade || 'unknown'}, Age ${studentContext.age || 'unknown'}, Preferred language: ${studentContext.language || 'English'}`;
+      userContext = `\nStudent info: Grade ${studentContext.grade || 'unknown'}, Age ${studentContext.age || 'unknown'}, Preferred language: ${studentContext.language || 'English'}`;
     }
 
+    const languageCode = studentContext?.language && studentContext.language !== 'English'
+      ? (studentContext.language || '').toLowerCase().slice(0, 2)
+      : detectLanguage(message);
+
     const messages = [
-      { role: 'system', content: `${SYSTEM_PROMPT}\n\n${schoolInfo}\n${userContext}` },
+      { role: 'system', content: buildKofiSystem({ name: studentContext?.name, languageCode }) + schoolInfo + userContext },
       ...(history || []).slice(-20),
       { role: 'user', content: message },
     ];

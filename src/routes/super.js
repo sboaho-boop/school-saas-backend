@@ -154,6 +154,32 @@ router.put('/schools/:id', requireSuper, async (req, res) => {
   }
 });
 
+router.put('/schools/:id/subscription', requireSuper, async (req, res) => {
+  try {
+    const { plan } = req.body;
+    const PLANS = {
+      free: { studentLimit: 100, staffLimit: 10 },
+      pro: { studentLimit: 1000, staffLimit: 50 },
+      enterprise: { studentLimit: 999999, staffLimit: 999999 },
+    };
+    if (!PLANS[plan]) return res.status(400).json({ error: 'Invalid plan. Use free, pro, or enterprise.' });
+
+    const school = await prisma.school.findUnique({ where: { id: req.params.id } });
+    if (!school) return res.status(404).json({ error: 'School not found' });
+
+    const limits = PLANS[plan];
+    await prisma.subscription.upsert({
+      where: { schoolId: req.params.id },
+      update: { plan, status: 'active', studentLimit: limits.studentLimit, staffLimit: limits.staffLimit, trialEndsAt: null },
+      create: { schoolId: req.params.id, plan, status: 'active', studentLimit: limits.studentLimit, staffLimit: limits.staffLimit },
+    });
+
+    res.json({ schoolId: req.params.id, plan, studentLimit: limits.studentLimit, staffLimit: limits.staffLimit, message: `School upgraded to ${plan}` });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.get('/schools/:id/students', requireSuper, async (req, res) => {
   try {
     const school = await prisma.school.findUnique({ where: { id: req.params.id } });

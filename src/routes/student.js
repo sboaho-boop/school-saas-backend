@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const { signToken, verifyToken } = require('../lib/jwt');
 const { authenticate } = require('../middleware/auth');
-const { SYSTEM_PROMPT, generateAIReply, checkAILimit } = require('../lib/ai');
+const { generateAIReply, checkAILimit, detectLanguage, buildKofiSystem } = require('../lib/ai');
 
 const router = Router();
 
@@ -198,10 +198,13 @@ router.post('/ai/chat', authenticateStudent, async (req, res) => {
     });
     if (!student) return res.status(404).json({ error: 'Student not found' });
 
-    const studentContext = `Student info: ${student.firstName}, Class: ${student.className || 'Unknown'}`;
+    const studentContext = `Class: ${student.className || 'Unknown'}`;
+
+    const studentName = student.firstName;
+    const languageCode = detectLanguage(message);
 
     const messages = [
-      { role: 'system', content: `${SYSTEM_PROMPT}\n\n${studentContext}` },
+      { role: 'system', content: buildKofiSystem({ name: studentName, languageCode }) + '\n' + studentContext },
       ...(history || []).slice(-20),
       { role: 'user', content: message },
     ];
@@ -244,13 +247,11 @@ const OpenAI = require('openai');
 const voiceUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const VOICE_LANG_MAP = { en: 'en', fr: 'fr', tw: 'ak', ha: 'ha', ga: 'en', ewe: 'ee', fante: 'ak', dagbani: 'dag' };
-const VOICE_LANG_NAMES = { en: 'English', fr: 'French', tw: 'Twi', ha: 'Hausa', ga: 'Ga', ewe: 'Ewe', fante: 'Fante', dagbani: 'Dagbani' };
 
 router.post('/ai/voice', authenticateStudent, voiceUpload.single('audio'), async (req, res) => {
   try {
     const { history, language } = req.body;
     const lang = language || 'en';
-    const langName = VOICE_LANG_NAMES[lang] || 'English';
 
     if (!req.file) return res.status(400).json({ error: 'Audio file required' });
 
@@ -287,13 +288,12 @@ router.post('/ai/voice', authenticateStudent, voiceUpload.single('audio'), async
       select: { firstName: true, className: true, classId: true },
     });
 
-    const studentCtx = `Student info: ${student?.firstName || 'Student'}, Class: ${student?.className || 'Unknown'}`;
-    const langInstruction = `\nThe student is speaking in ${langName}. Please respond in ${langName}. Keep your spoken response natural and concise — this will be read aloud to the student.`;
+    const studentCtx = `Class: ${student?.className || 'Unknown'}`;
 
     const parsedHistory = typeof history === 'string' ? JSON.parse(history || '[]') : (history || []);
 
     const messages = [
-      { role: 'system', content: `${SYSTEM_PROMPT}\n\n${studentCtx}${langInstruction}` },
+      { role: 'system', content: buildKofiSystem({ name: student?.firstName, languageCode: lang, voice: true }) + '\n' + studentCtx },
       ...parsedHistory.slice(-20),
       { role: 'user', content: transcribed },
     ];
