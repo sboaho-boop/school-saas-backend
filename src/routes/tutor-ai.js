@@ -84,6 +84,73 @@ router.post('/chat', async (req, res) => {
   }
 });
 
+function buildImagePrompt(prompt) {
+  const safe = String(prompt || '').trim().slice(0, 500);
+  return (safe || 'a happy Ghanaian child studying')
+    + '. Style: bright, friendly, child-friendly cartoon illustration for a young student (ages 4-16). '
+    + 'Colorful, wholesome, educational. No scary, violent, or inappropriate content. No extra text.';
+}
+
+router.post('/image', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    if (!prompt || !prompt.trim()) return res.status(400).json({ error: 'Describe the picture you want.' });
+
+    const limit = await checkTutorLimit(req.userId);
+    if (!limit.allowed) {
+      return res.status(403).json({ error: 'Daily limit reached (' + limit.used + '/' + limit.limit + '). Upgrade for more.', limit });
+    }
+
+    const imagePrompt = buildImagePrompt(prompt);
+    let imageData = null;
+
+    // Primary: OpenAI DALL-E 3
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const result = await openai.images.generate({
+          model: 'dall-e-3',
+          prompt: imagePrompt,
+          n: 1,
+          size: '1024x1024',
+          response_format: 'b64_json',
+        });
+        const b64 = result.data?.[0]?.b64_json;
+        if (b64) imageData = 'data:image/png;base64,' + b64;
+      } catch (err) {
+        console.error('DALL-E error:', err.message);
+      }
+    }
+
+    // Fallback: Pollinations (free, no key)
+    if (!imageData) {
+      try {
+        const url = 'https://image.pollinations.ai/prompt/' + encodeURIComponent(imagePrompt) + '?width=1024&height=1024&nologo=true';
+        const imgRes = await fetch(url, { signal: AbortSignal.timeout(60000) });
+        if (imgRes.ok) {
+          const buf = Buffer.from(await imgRes.arrayBuffer());
+          imageData = 'data:image/png;base64,' + buf.toString('base64');
+        }
+      } catch (err) {
+        console.error('Pollinations error:', err.message);
+      }
+    }
+
+    if (!imageData) return res.status(503).json({ error: 'Image generation is not available right now. Try again later.' });
+
+    await prisma.tutorConversation.create({
+      data: { userId: req.userId, userMessage: '[image] ' + prompt, aiResponse: '[generated image] ' + prompt },
+    }).catch(() => {});
+
+    await incrementUsage(req.userId);
+    const updatedLimit = await checkTutorLimit(req.userId);
+    res.json({ imageData, prompt, remaining: updatedLimit.remaining });
+  } catch (err) {
+    console.error('Tutor AI image error:', err.message);
+    res.status(500).json({ error: err.message || 'Image generation failed' });
+  }
+});
+
 router.post('/voice', upload.single('audio'), async (req, res) => {
   try {
     const { history, language } = req.body;
