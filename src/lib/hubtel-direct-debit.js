@@ -46,9 +46,10 @@ function preapprovalInitiate({ phone, channel, callbackUrl, clientReferenceId, s
       res.on('data', (c) => body += c);
       res.on('end', () => {
         try {
-          resolve(JSON.parse(body));
+          const parsed = JSON.parse(body);
+          resolve(parsed);
         } catch {
-          reject(new Error(`Hubtel response: ${body}`));
+          reject(buildError(body, res.statusCode));
         }
       });
     });
@@ -56,6 +57,13 @@ function preapprovalInitiate({ phone, channel, callbackUrl, clientReferenceId, s
     req.write(payload);
     req.end();
   });
+}
+
+function buildError(body, statusCode) {
+  if (String(body || '').trim().startsWith('<')) {
+    return new Error(`Hubtel rejected the request (HTTP ${statusCode}). Check your live Hubtel credentials and that Direct Debit / Preapproval is enabled for your collection account.`);
+  }
+  return new Error(`Hubtel response: ${body}`);
 }
 
 function preapprovalVerifyOtp({ phone, hubtelPreApprovalId, clientReferenceId, otpCode, schoolCredentials }) {
