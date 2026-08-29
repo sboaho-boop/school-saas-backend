@@ -72,9 +72,8 @@ const tutorAIRoutes = require('./routes/tutor-ai');
 const tutorSubRoutes = require('./routes/tutor-subscription');
 const prisma = require('./lib/prisma');
 
-app.set('trust proxy', 1);
-
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 4000;
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,https://school-saas-fawn.vercel.app,https://eduplatformsoftware.com,https://www.eduplatformsoftware.com,https://teacherkofi.com,https://www.teacherkofi.com').split(',').map(s => s.trim());
 
