@@ -1,27 +1,56 @@
 const { Router } = require('express');
-const crypto = require('crypto');
 const prisma = require('../lib/prisma');
 const { authenticateTutor } = require('./tutor-auth');
+const { PLANS, LIMITS } = require('../lib/tutor-plans');
+const {
+  preapprovalInitiate,
+  preapprovalVerifyOtp,
+  preapprovalStatus,
+  preapprovalCancel,
+} = require('../lib/hubtel-direct-debit');
 
 const router = Router();
 
-const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || '';
-const PAYSTACK_BASE = 'https://api.paystack.co';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:4000';
+const CHANNELS = ['mtn-gh', 'vodafone-gh'];
 
-const PLANS = {
-  pro: {
-    planCode: process.env.PAYSTACK_PLAN_PRO_CODE || 'pro',
-    amount: Number(process.env.PAYSTACK_PLAN_PRO_AMOUNT) || 19,
-    name: 'Teacher Kofi Pro',
-    interval: 'monthly',
-  },
-  unlimited: {
-    planCode: process.env.PAYSTACK_PLAN_UNLIMITED_CODE || 'unlimited',
-    amount: Number(process.env.PAYSTACK_PLAN_UNLIMITED_AMOUNT) || 39,
-    name: 'Teacher Kofi Unlimited',
-    interval: 'monthly',
-  },
+const isApproved = (status) => /APPROVED|ACTIVE|SUCCESS|AUTHORIZED/i.test(status || '');
+const isSuccessResponse = (code) => {
+  const c = String(code || '');
+  return c === '0000' || /^succ/i.test(c) || '2000' === c;
 };
+
+function normalizePhone(phone) {
+  const digits = String(phone || '').replace(/[^0-9]/g, '');
+  return digits.startsWith('233') ? digits : `233${digits.replace(/^0/, '')}`;
+}
+
+async function activatePlan(userId, plan) {
+  const now = new Date();
+  const periodEnd = new Date(now);
+  periodEnd.setMonth(periodEnd.getMonth() + 1);
+  return prisma.tutorUser.update({
+    where: { id: userId },
+    data: {
+      plan,
+      subscriptionStart: now,
+      subscriptionEnd: periodEnd,
+      dailyUsage: 0,
+      dailyUsageDate: '',
+      hubtelPreapprovalStatus: 'APPROVED',
+    },
+  });
+}
+
+function getHubtelCredentials() {
+  const clientId = process.env.HUBTEL_CLIENT_ID || '';
+  const clientSecret = process.env.HUBTEL_CLIENT_SECRET || '';
+  const collectionAccount = process.env.HUBTEL_MERCHANT_ACCOUNT || '';
+  if (!clientId || !clientSecret || !collectionAccount) {
+    throw new Error('Hubtel credentials are not configured in the environment');
+  }
+  return { hubtelClientId: clientId, hubtelClientSecret: clientSecret, hubtelMerchantAccount: collectionAccount };
+}
 
 router.get('/plans', (req, res) => {
   res.json({
@@ -30,131 +59,236 @@ router.get('/plans', (req, res) => {
   });
 });
 
+// 1. User pays by Mobile Money: initiate a Hubtel direct-debit preapproval.
 router.post('/init', authenticateTutor, async (req, res) => {
   try {
-    const { plan } = req.body;
+    const { plan, phone, channel } = req.body;
     if (!PLANS[plan]) return res.status(400).json({ error: 'Invalid plan. Use "pro" or "unlimited".' });
-
-    const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { email: true, name: true } });
-
-    const planConfig = PLANS[plan];
-
-    const initRes = await fetch(PAYSTACK_BASE + '/transaction/initialize', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + PAYSTACK_SECRET,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: user.email,
-        amount: planConfig.amount * 100,
-        plan: planConfig.planCode,
-        metadata: { userId: req.userId, plan, userName: user.name },
-        callback_url: (process.env.FRONTEND_URL || 'http://localhost:3000') + '/tutor/dashboard?upgraded=1',
-      }),
-    });
-
-    const data = await initRes.json();
-    if (!data.status) {
-      return res.status(400).json({ error: data.message || 'Payment initialization failed' });
+    if (!phone || !CHANNELS.includes(channel)) {
+      return res.status(400).json({ error: 'Phone and channel required (mtn-gh or vodafone-gh).' });
     }
 
-    res.json({ authorization_url: data.data.authorization_url, reference: data.data.reference, access_code: data.data.access_code });
+    const user = await prisma.tutorUser.findUnique({
+      where: { id: req.userId },
+      select: { id: true, name: true, email: true, plan: true, hubtelPreapprovalStatus: true, hubtelClientReference: true },
+    });
+    if (!user) return res.status(404).json({ error: 'Account not found' });
+
+    const msisdn = normalizePhone(phone);
+    const clientReferenceId = `TKSUB-${user.id}-${Date.now()}`;
+
+    const result = await preapprovalInitiate({
+      phone: msisdn,
+      channel,
+      callbackUrl: `${BASE_URL}/api/tutor/subscription/webhook/preapproval`,
+      clientReferenceId,
+      schoolCredentials: getHubtelCredentials(),
+    });
+
+    if (String(result.responseCode) !== '2000') {
+      return res.status(400).json({ error: result.message || 'Could not start the approval. Check the number and try again.', code: result.responseCode });
+    }
+
+    // paystackPlan is reused as a "pending plan" during the Hubtel approval flow.
+    await prisma.tutorUser.update({
+      where: { id: user.id },
+      data: {
+        paystackPlan: plan,
+        hubtelPhone: msisdn,
+        hubtelChannel: channel,
+        hubtelPreApprovalId: result.data?.hubtelPreApprovalId || null,
+        hubtelClientReference: clientReferenceId,
+        hubtelPreapprovalStatus: 'PENDING',
+      },
+    });
+
+    res.json({
+      message: result.data?.verificationType === 'USSD'
+        ? 'Approval request sent to your phone. Approve it to continue.'
+        : 'An OTP has been sent to your phone. Enter it below.',
+      verificationType: result.data?.verificationType,
+      otpPrefix: result.data?.otpPrefix || null,
+      hubtelPreApprovalId: result.data?.hubtelPreApprovalId,
+      clientReferenceId,
+    });
   } catch (err) {
-    console.error('Paystack init error:', err.message);
-    res.status(500).json({ error: 'Payment initialization failed' });
+    console.error('Subscription init error:', err.message);
+    res.status(500).json({ error: err.message || 'Could not start the payment.' });
   }
 });
 
-router.post('/verify', authenticateTutor, async (req, res) => {
+// 2. Verify OTP (if the flow uses one) and activate the plan once approved.
+router.post('/confirm', authenticateTutor, async (req, res) => {
   try {
-    const { reference } = req.body;
-    if (!reference) return res.status(400).json({ error: 'Reference required' });
+    const { otpCode } = req.body;
+    const user = await prisma.tutorUser.findUnique({ where: { id: req.userId } });
+    if (!user?.hubtelClientReference) return res.status(400).json({ error: 'Start a subscription first.' });
 
-    const verifyRes = await fetch(PAYSTACK_BASE + '/transaction/verify/' + reference, {
-      headers: { Authorization: 'Bearer ' + PAYSTACK_SECRET },
-    });
-
-    const data = await verifyRes.json();
-    if (!data.status || data.data.status !== 'success') {
-      return res.status(400).json({ error: 'Payment not successful' });
+    if (otpCode) {
+      const otpResult = await preapprovalVerifyOtp({
+        phone: user.hubtelPhone,
+        hubtelPreApprovalId: user.hubtelPreApprovalId,
+        clientReferenceId: user.hubtelClientReference,
+        otpCode,
+        schoolCredentials: getHubtelCredentials(),
+      });
+      if (!isSuccessResponse(otpResult.responseCode)) {
+        return res.status(400).json({ error: otpResult.message || 'OTP verification failed', code: otpResult.responseCode });
+      }
     }
 
-    const meta = data.data.metadata || {};
-    const plan = meta.plan || req.body.plan;
-    const now = new Date();
-    const periodEnd = new Date(now);
-    periodEnd.setMonth(periodEnd.getMonth() + 1);
+    const statusResult = await preapprovalStatus({
+      clientReferenceId: user.hubtelClientReference,
+      schoolCredentials: getHubtelCredentials(),
+    });
+    const status = statusResult.data?.preapprovalStatus || statusResult.data?.status || '';
+
+    if (isApproved(status)) {
+      const plan = user.paystackPlan && PLANS[user.paystackPlan] ? user.paystackPlan : 'pro';
+      await activatePlan(user.id, plan);
+      const { subscriptionEnd } = await prisma.tutorUser.findUnique({ where: { id: user.id } });
+      return res.json({ success: true, plan, subscriptionEnd });
+    }
+
+    res.json({ success: false, pending: true, preapprovalStatus: status, message: 'Approval not confirmed yet. Check your phone and try again.' });
+  } catch (err) {
+    console.error('Subscription confirm error:', err.message);
+    res.status(500).json({ error: err.message || 'Could not confirm the payment.' });
+  }
+});
+
+// 2b. Read-only check of the preapproval status (used to poll after approving).
+router.get('/preapproval-status', authenticateTutor, async (req, res) => {
+  try {
+    const user = await prisma.tutorUser.findUnique({ where: { id: req.userId } });
+    if (!user?.hubtelClientReference) return res.json({ preapprovalStatus: 'NONE', plan: user?.plan || 'free' });
+
+    const statusResult = await preapprovalStatus({
+      clientReferenceId: user.hubtelClientReference,
+      schoolCredentials: getHubtelCredentials(),
+    });
+    const status = statusResult.data?.preapprovalStatus || statusResult.data?.status || 'PENDING';
+
+    if (isApproved(status) && user.plan === 'free') {
+      const plan = user.paystackPlan && PLANS[user.paystackPlan] ? user.paystackPlan : 'pro';
+      await activatePlan(user.id, plan);
+      const updated = await prisma.tutorUser.findUnique({ where: { id: user.id } });
+      return res.json({ preapprovalStatus: status, plan: updated.plan, subscriptionEnd: updated.subscriptionEnd });
+    }
 
     await prisma.tutorUser.update({
-      where: { id: meta.userId || req.userId },
-      data: {
-        plan: plan,
-        subscriptionStart: now,
-        subscriptionEnd: periodEnd,
-        dailyUsage: 0,
-        dailyUsageDate: '',
-      },
-    });
+      where: { id: user.id },
+      data: { hubtelPreapprovalStatus: status === 'NONE' ? 'PENDING' : status },
+    }).catch(() => {});
 
-    res.json({ success: true, plan, subscriptionEnd: periodEnd });
+    res.json({ preapprovalStatus: status, plan: user.plan });
   } catch (err) {
-    console.error('Paystack verify error:', err.message);
-    res.status(500).json({ error: 'Verification failed' });
+    console.error('Preapproval status error:', err.message);
+    res.status(500).json({ error: err.message || 'Could not check payment status.' });
   }
 });
 
-router.post('/webhook', async (req, res) => {
+// 3. Cancel auto-renewal (the current paid period stays active).
+router.post('/cancel', authenticateTutor, async (req, res) => {
   try {
-    if (!PAYSTACK_SECRET) return res.sendStatus(200);
-
-    const hash = crypto.createHmac('sha512', PAYSTACK_SECRET).update(JSON.stringify(req.body)).digest('hex');
-    if (hash !== req.headers['x-paystack-signature']) {
-      return res.status(400).json({ error: 'Invalid signature' });
+    const user = await prisma.tutorUser.findUnique({ where: { id: req.userId } });
+    if (user?.hubtelPhone) {
+      await preapprovalCancel({ phone: user.hubtelPhone, schoolCredentials: getHubtelCredentials() }).catch(() => {});
     }
+    await prisma.tutorUser.update({
+      where: { id: req.userId },
+      data: { hubtelPreapprovalStatus: 'CANCELLED' },
+    });
+    res.json({ success: true, message: 'Auto-renewal cancelled. Your current plan stays until it expires.' });
+  } catch (err) {
+    console.error('Subscription cancel error:', err.message);
+    res.status(500).json({ error: err.message || 'Could not cancel.' });
+  }
+});
 
-    const event = req.body;
-    if (event.event === 'subscription.create' || event.event === 'charge.success') {
-      const meta = event.data?.metadata || {};
-      const userId = meta.userId;
-      if (userId) {
+// Hubtel preapproval webhook (approval lifecycle).
+router.post('/webhook/preapproval', async (req, res) => {
+  try {
+    const data = req.body;
+    const clientReference = data.ClientReferenceId || data.ClientReference;
+    if (clientReference && String(clientReference).startsWith('TKSUB-')) {
+      await prisma.tutorUser.updateMany({
+        where: { hubtelClientReference: clientReference },
+        data: { hubtelPreapprovalStatus: data.PreapprovalStatus || data.Status || data.preapprovalStatus || 'UNKNOWN' },
+      });
+      console.log(`Tutor preapproval ${clientReference}: ${data.PreapprovalStatus}`);
+    }
+    res.status(200).json({ message: 'OK' });
+  } catch (err) {
+    console.error('Tutor preapproval webhook error:', err.message);
+    res.status(200).json({ message: 'OK' });
+  }
+});
+
+// Hubtel charge webhook (auto-renewal success extends the plan by one month).
+router.post('/webhook/charge', async (req, res) => {
+  try {
+    const data = req.body.Data || req.body;
+    const clientReference = data.ClientReference || data.OrderId || data.ClientReferenceId;
+    const status = data.Status || data.Message || '';
+    const code = String(data.ResponseCode || '');
+    const charged = code === '0000' || /success/i.test(status);
+
+    if (clientReference && String(clientReference).startsWith('TKCHG-')) {
+      const parts = String(clientReference).split('-');
+      const plan = parts[1];
+      const userId = parts[2];
+      if (charged) {
         const now = new Date();
         const periodEnd = new Date(now);
         periodEnd.setMonth(periodEnd.getMonth() + 1);
         await prisma.tutorUser.update({
           where: { id: userId },
           data: {
-            plan: meta.plan || 'pro',
+            plan: PLANS[plan] ? plan : undefined,
             subscriptionStart: now,
             subscriptionEnd: periodEnd,
             dailyUsage: 0,
             dailyUsageDate: '',
-            paystackCustomerCode: event.data?.customer?.customer_code || null,
-            paystackSubscriptionCode: event.data?.subscription?.subscription_code || null,
+            hubtelRenewalReference: null,
           },
+        });
+        console.log(`Tutor renewal charged: ${clientReference}`);
+      } else {
+        await prisma.tutorUser.update({
+          where: { id: userId },
+          data: { hubtelRenewalReference: null },
         }).catch(() => {});
       }
     }
-
-    res.sendStatus(200);
+    res.status(200).json({ message: 'OK' });
   } catch (err) {
-    console.error('Paystack webhook error:', err.message);
-    res.sendStatus(200);
+    console.error('Tutor charge webhook error:', err.message);
+    res.status(200).json({ message: 'OK' });
   }
 });
 
+// Current plan + usage status (also surfaces auto-renew info).
 router.get('/status', authenticateTutor, async (req, res) => {
   try {
     const user = await prisma.tutorUser.findUnique({
       where: { id: req.userId },
-      select: { plan: true, subscriptionStart: true, subscriptionEnd: true, dailyUsage: true, dailyUsageDate: true },
+      select: {
+        plan: true,
+        subscriptionStart: true,
+        subscriptionEnd: true,
+        dailyUsage: true,
+        dailyUsageDate: true,
+        hubtelPhone: true,
+        hubtelChannel: true,
+        hubtelPreapprovalStatus: true,
+      },
     });
 
     const today = new Date().toISOString().slice(0, 10);
     const usage = user?.dailyUsageDate === today ? user?.dailyUsage || 0 : 0;
-
-    const limits = { free: 5, pro: 100, unlimited: -1 };
-    const limit = limits[user?.plan] ?? 5;
+    const limit = user?.plan ? (LIMITS[user.plan] ?? 5) : 5;
+    const active = user?.plan !== 'free' && (!user?.subscriptionEnd || new Date(user.subscriptionEnd) > new Date());
 
     res.json({
       plan: user?.plan || 'free',
@@ -163,7 +297,10 @@ router.get('/status', authenticateTutor, async (req, res) => {
       dailyUsage: usage,
       dailyLimit: limit,
       remaining: limit === -1 ? -1 : Math.max(0, limit - usage),
-      isActive: user?.plan !== 'free' && (!user?.subscriptionEnd || new Date(user.subscriptionEnd) > new Date()),
+      isActive: active,
+      autoRenew: user?.hubtelPreapprovalStatus === 'APPROVED',
+      paymentPhone: user?.hubtelPhone || null,
+      paymentChannel: user?.hubtelChannel || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

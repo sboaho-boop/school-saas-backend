@@ -154,6 +154,85 @@ async function cleanupStalePushSubscriptions() {
   }
 }
 
+async function processTutorSubscriptionRenewals() {
+  try {
+    const { PLANS } = require('./tutor-plans');
+    const { directDebitCharge } = require('./hubtel-direct-debit');
+
+    const clientId = process.env.HUBTEL_CLIENT_ID || '';
+    const clientSecret = process.env.HUBTEL_CLIENT_SECRET || '';
+    const collectionAccount = process.env.HUBTEL_MERCHANT_ACCOUNT || '';
+    if (!clientId || !clientSecret || !collectionAccount || !process.env.BASE_URL) {
+      console.warn('[tutor-renewals] Hubtel credentials or BASE_URL not configured; skipping.');
+      return;
+    }
+    const schoolCredentials = { hubtelClientId: clientId, hubtelClientSecret: clientSecret, hubtelMerchantAccount: collectionAccount };
+
+    const soon = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    const dueUsers = await prisma.tutorUser.findMany({
+      where: {
+        plan: { in: ['pro', 'unlimited'] },
+        hubtelPreapprovalStatus: 'APPROVED',
+        hubtelPreApprovalId: { not: null },
+        hubtelRenewalReference: null,
+        subscriptionEnd: { lte: soon },
+      },
+    });
+
+    for (const user of dueUsers) {
+      const planConfig = PLANS[user.plan];
+      const clientReference = `TKCHG-${user.plan}-${user.id}-${Date.now()}`;
+      const callbackUrl = `${process.env.BASE_URL}/api/tutor/subscription/webhook/charge`;
+      try {
+        const now = new Date();
+        const periodEnd = new Date(now);
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+        const result = await directDebitCharge({
+          customerName: user.name || 'Client',
+          customerMsisdn: user.hubtelPhone,
+          customerEmail: user.email,
+          channel: user.hubtelChannel,
+          amount: planConfig.amount,
+          description: `Teacher Kofi ${user.plan} monthly renewal`,
+          clientReference,
+          callbackUrl,
+          schoolCredentials,
+        });
+
+        const code = String(result.ResponseCode || '');
+        if (code === '0000' || /success/i.test(result.Status || '')) {
+          await prisma.tutorUser.update({
+            where: { id: user.id },
+            data: {
+              subscriptionStart: now,
+              subscriptionEnd: periodEnd,
+              dailyUsage: 0,
+              dailyUsageDate: '',
+              hubtelRenewalReference: null,
+            },
+          });
+          console.log(`[tutor-renewals] ${user.email} renewed via ${clientReference}`);
+        } else {
+          await prisma.tutorUser.update({
+            where: { id: user.id },
+            data: { hubtelRenewalReference: clientReference },
+          }).catch(() => {});
+          console.warn(`[tutor-renewals] Charge pending/failed for ${user.email}: ${result.Message || result.ResponseCode}`);
+        }
+      } catch (err) {
+        console.error(`[tutor-renewals] Error charging ${user.email}:`, err.message);
+        await prisma.tutorUser.update({
+          where: { id: user.id },
+          data: { hubtelRenewalReference: clientReference },
+        }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error('[tutor-renewals] Error:', err.message);
+  }
+}
+
 function startCronWorkers() {
   console.log('[cron] Starting scheduled message processor...');
   setInterval(processScheduledMessages, POLL_INTERVAL);
@@ -166,7 +245,11 @@ function startCronWorkers() {
   console.log('[cron] Starting push subscription cleanup (every 6 hours)...');
   setInterval(cleanupStalePushSubscriptions, 6 * 60 * 60 * 1000);
 
+  console.log('[cron] Starting Teacher Kofi auto-renewals (every 6 hours)...');
+  setInterval(processTutorSubscriptionRenewals, 6 * 60 * 60 * 1000);
+  setTimeout(processTutorSubscriptionRenewals, 5000);
+
   console.log('[cron] All workers started.');
 }
 
-module.exports = { startCronWorkers, processScheduledMessages, checkOverdueFees, cleanupStalePushSubscriptions };
+module.exports = { startCronWorkers, processScheduledMessages, checkOverdueFees, cleanupStalePushSubscriptions, processTutorSubscriptionRenewals };

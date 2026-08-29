@@ -1090,6 +1090,12 @@ model TutorUser {
   paystackCustomerCode  String?
   paystackSubscriptionCode String?
   paystackPlan    String?
+  hubtelPhone          String?
+  hubtelChannel        String?
+  hubtelPreApprovalId  String?
+  hubtelClientReference String?
+  hubtelPreapprovalStatus String?
+  hubtelRenewalReference String?
   subscriptionStart DateTime?
   subscriptionEnd   DateTime?
   dailyUsage      Int       @default(0)
