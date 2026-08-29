@@ -58,6 +58,7 @@ async function main() {
     }
 
     console.log('[migrate] Applying pending migrations...');
+    console.log(`[migrate] Applied so far: ${applied.join(', ') || '(none)'}`);
     execSync('npx prisma migrate deploy', { stdio: 'inherit' });
     console.log('[migrate] Database is up to date.');
   } finally {
