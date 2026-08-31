@@ -266,7 +266,7 @@ async function generateAIReply(messages, schoolId) {
             contents,
             generationConfig: {
               temperature: 0.7,
-              maxOutputTokens: 2048,
+              maxOutputTokens: 1200,
               topP: 0.9,
             },
           }),
@@ -319,7 +319,7 @@ async function* streamAIReply(messages) {
           body: JSON.stringify({
             system_instruction: { parts: [{ text: systemText }] },
             contents,
-            generationConfig: { temperature: 0.7, maxOutputTokens: 2048, topP: 0.9 },
+            generationConfig: { temperature: 0.7, maxOutputTokens: 1200, topP: 0.9 },
           }),
         }
       );
