@@ -1111,6 +1111,7 @@ model TutorConversation {
   userId      String
   userMessage String
   aiResponse  String
+  media       String?
   createdAt   DateTime @default(now())
 
   user TutorUser @relation(fields: [userId], references: [id], onDelete: Cascade)

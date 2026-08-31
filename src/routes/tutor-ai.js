@@ -1,4 +1,5 @@
 const { generateAIReply, streamAIReply, transcribeAudio, detectLanguage, buildKofiSystem } = require('../lib/ai');
+const { parseRichReply, resolveImages, stripImageData } = require('../lib/rich-media');
 const { Router } = require('express');
 const multer = require('multer');
 const OpenAI = require('openai');
@@ -52,15 +53,27 @@ router.post('/chat', async (req, res) => {
       userMsg,
     ];
 
-    const reply = await generateAIReply(messages);
-    if (!reply) return res.status(503).json({ error: 'AI service not configured.' });
+    const raw = await generateAIReply(messages);
+    if (!raw) return res.status(503).json({ error: 'AI service not configured.' });
+
+    const parsed = parseRichReply(raw);
+    const resolvedCount = await resolveImages(parsed.media);
+    if (resolvedCount > 0) {
+      const dataUri = parsed.media.find((m) => m.type === 'image' && m.data);
+      if (dataUri) {
+        const m = /^data:image\/([a-z0-9+]+);base64,(.+)$/.exec(dataUri.data);
+        if (m) dataUri.data = 'data:image/' + m[1] + ';base64,' + m[2];
+      }
+    }
+    const reply = parsed.text;
+    const media = parsed.media;
 
     const remaining = limit.remaining === -1 ? -1 : Math.max(0, limit.remaining - 1);
     persistTutorUsage(req.userId, limit.isNewDay ? 1 : limit.used + 1, limit.isNewDay, {
-      data: { userId: req.userId, userMessage: message, aiResponse: reply },
+      data: { userId: req.userId, userMessage: message, aiResponse: reply, media: media ? JSON.stringify(stripImageData(media)) : null },
     }).catch(() => {});
 
-    res.json({ reply, remaining });
+    res.json({ reply, remaining, media });
   } catch (err) {
     console.error('Tutor AI chat error:', err.message);
     res.status(500).json({ error: err.message || 'AI service unavailable' });
@@ -110,13 +123,20 @@ router.post('/chat/stream', async (req, res) => {
       return;
     }
 
+    const parsed = parseRichReply(text);
+    await resolveImages(parsed.media);
+    const media = parsed.media;
+    const reply = parsed.text;
+    if (media && media.length) send({ media });
+    send({ reply });
+
     const remaining = limit.remaining === -1 ? -1 : Math.max(0, limit.remaining - 1);
     send({ done: true, remaining });
     res.end();
 
     if (!aborted) {
       persistTutorUsage(req.userId, limit.isNewDay ? 1 : limit.used + 1, limit.isNewDay, {
-        data: { userId: req.userId, userMessage: message, aiResponse: text },
+        data: { userId: req.userId, userMessage: message, aiResponse: reply, media: media && media.length ? JSON.stringify(stripImageData(media)) : null },
       }).catch(() => {});
     }
   } catch (err) {
@@ -226,12 +246,15 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
     const reply = await generateAIReply(messages);
     if (!reply) return res.status(503).json({ error: 'AI service not configured.' });
 
+    const parsed = parseRichReply(reply);
+    const cleanReply = parsed.text; // voice stays text-only (no media/images)
+
     const remaining = limit.remaining === -1 ? -1 : Math.max(0, limit.remaining - 1);
     persistTutorUsage(req.userId, limit.isNewDay ? 1 : limit.used + 1, limit.isNewDay, {
-      data: { userId: req.userId, userMessage: '[voice/' + lang + '] ' + transcribed, aiResponse: reply },
+      data: { userId: req.userId, userMessage: '[voice/' + lang + '] ' + transcribed, aiResponse: cleanReply },
     }).catch(() => {});
 
-    res.json({ transcribed, reply, language: lang, remaining });
+    res.json({ transcribed, reply: cleanReply, language: lang, remaining });
   } catch (err) {
     console.error('[tutor voice] Error:', err.message);
     res.status(500).json({ error: err.message || 'Voice processing failed' });

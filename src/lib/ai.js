@@ -93,7 +93,21 @@ function buildKofiSystem({ name, languageCode, voice }) {
     parts.push('\nThe student is speaking in ' + langName + '. Respond fully in ' + langName + '.');
   }
   if (voice) {
-    parts.push('\nThis is a voice lesson. Keep the reply short, clear, and natural to read aloud — at most 2 short paragraphs, no tables or heavy symbols.');
+    parts.push('\nThis is a voice lesson. Keep the reply short, clear, and natural to read aloud — at most 2 short paragraphs, no tables, lists, heavy symbols, or media blocks.');
+  } else {
+    parts.push(`\nENRICH YOUR LESSON (when it genuinely helps the learner understand):
+1. More examples — include 1-3 short everyday examples the child can relate to (market, food, football, family).
+2. A picture to make it visual. When an image would help, add at the END of your reply:
+
+===MEDIA===
+IMAGE: <short child-friendly keywords describing the picture, e.g. "fractions of a banku and okro meal divided into halves">
+===END===
+
+3. A short video or lesson link for curious learners. Only when a real, trustworthy one matches the topic. Add any video AFTER the image block, like:
+
+VIDEO: https://www.youtube.com/watch?v=xxxxxxxx
+
+Rules: NEVER invent links. Only use real links you are certain exist on YouTube, Khan Academy, or BBC Bitesize. If you are not sure a link is real, omit it. Do NOT add a media block to trivial chitchat, greetings, or short answers — only to real teaching lessons. Keep the main teaching text clear and complete on its own, even if the image/video can't load.`);
   }
   return parts.join('\n');
 }
