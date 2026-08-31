@@ -1,5 +1,4 @@
 const { generateAIReply, streamAIReply, transcribeAudio, detectLanguage, buildKofiSystem } = require('../lib/ai');
-const { synthesize, supportedLanguage, isTtsConfigured } = require('../lib/google-tts');
 const { Router } = require('express');
 const multer = require('multer');
 const OpenAI = require('openai');
@@ -236,39 +235,6 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
   } catch (err) {
     console.error('[tutor voice] Error:', err.message);
     res.status(500).json({ error: err.message || 'Voice processing failed' });
-  }
-});
-
-// Cloud speech synthesis: returns MP3 audio for Teacher Kofi's voice replies.
-router.post('/speak', async (req, res) => {
-  try {
-    const { text, lang } = req.body;
-    if (!text || !String(text).trim()) return res.status(400).json({ error: 'Text required' });
-    const code = supportedLanguage(lang || 'en');
-    if (!code) return res.status(400).json({ error: 'Language not supported for speech', fallback: true });
-    if (!isTtsConfigured()) {
-      return res.status(503).json({ error: 'Text-to-speech is not configured', fallback: true });
-    }
-
-    const audio = await synthesize(String(text).trim(), code);
-    if (!audio || !audio.ok) {
-      const status = audio?.status;
-      const reason = audio?.reason || 'unknown';
-      const helpful = status === 403 || status === 400
-        ? ' Google Cloud Text-to-Speech is not enabled for this API key (enable it in Google Cloud Console).'
-        : '';
-      if (typeof status === 'number' && status >= 400 && status < 500) {
-        return res.status(200).json({ fallback: true, hint: 'TTSError:' + status + ':' + reason + helpful });
-      }
-      return res.status(503).json({ error: 'Speech synthesis failed', fallback: true });
-    }
-
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.send(audio.audio);
-  } catch (err) {
-    console.error('[tutor speak] Error:', err.message);
-    res.status(503).json({ error: 'Speech synthesis failed', fallback: true });
   }
 });
 
