@@ -58,13 +58,13 @@ async function synthesize(text, code, speakingRate) {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(60000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { ok: false, status: res.status, reason: (await res.text().catch(() => '')).slice(0, 500) };
     const data = await res.json();
     const b64 = data.audioContent;
-    if (!b64) return null;
-    return Buffer.from(b64, 'base64');
+    if (!b64) return { ok: false, status: null, reason: 'No audio content' };
+    return { ok: true, audio: Buffer.from(b64, 'base64') };
   } catch {
-    return null;
+    return { ok: false, status: null, reason: 'network error' };
   }
 }
 

@@ -251,13 +251,21 @@ router.post('/speak', async (req, res) => {
     }
 
     const audio = await synthesize(String(text).trim(), code);
-    if (!audio) {
+    if (!audio || !audio.ok) {
+      const status = audio?.status;
+      const reason = audio?.reason || 'unknown';
+      const helpful = status === 403 || status === 400
+        ? ' Google Cloud Text-to-Speech is not enabled for this API key (enable it in Google Cloud Console).'
+        : '';
+      if (typeof status === 'number' && status >= 400 && status < 500) {
+        return res.status(200).json({ fallback: true, hint: 'TTSError:' + status + ':' + reason + helpful });
+      }
       return res.status(503).json({ error: 'Speech synthesis failed', fallback: true });
     }
 
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.send(audio);
+    res.send(audio.audio);
   } catch (err) {
     console.error('[tutor speak] Error:', err.message);
     res.status(503).json({ error: 'Speech synthesis failed', fallback: true });
