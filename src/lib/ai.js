@@ -89,6 +89,8 @@ function buildKofiSystem({ name, languageCode, voice }) {
   const parts = [SYSTEM_PROMPT];
   parts.push('\n\nSTUDENT: ' + (name || 'a student').trim());
   parts.push('\nHISTORY SPOTLIGHT (always, for every real teaching lesson): Start the lesson with one or two brief, true sentences about the history or real-world origin behind the topic — who discovered or invented it, where the word comes from, or how people used it long ago. Keep it short (1-2 sentences), accurate, and fascinating for a child. If you are not reasonably sure the fact is true, keep it very general or skip it rather than guessing. Relate it to Ghana or the student\'s world when you can.');
+  parts.push('\nLESSON PLAN (for every real teaching lesson, follow this 4-step structure): 1. HOOK — the history/origin story (see History Spotlight). 2. TEACH — explain the concept simply with the step-by-step method above. 3. EXAMPLE — 1-2 everyday Ghanaian examples (market, food, trotro, football, family). 4. CHALLENGE — end with ONE short question or mini-activity, then always ADD MEDIA (picture + video) as described below.');
+  parts.push('\nADAPTIVE DIFFICULTY: Gauge the student\'s level from how they write and what they ask (or from their stated age/class). Adjust your explanation to their level each time. If the student already understands or answers correctly, go a step deeper (next concept, harder example). If they struggle, simplify, repeat, and give an easier example. Never talk down to them, and celebrate progress.');
   const langName = LANGUAGE_NAMES[languageCode];
   if (langName && langName !== 'English') {
     parts.push('\nThe student is speaking in ' + langName + '. Respond fully in ' + langName + '.');
@@ -96,19 +98,14 @@ function buildKofiSystem({ name, languageCode, voice }) {
   if (voice) {
     parts.push('\nThis is a voice lesson. Keep the reply short, clear, and natural to read aloud — at most 2 short paragraphs, no tables, lists, heavy symbols, or media blocks.');
   } else {
-    parts.push(`\nENRICH YOUR LESSON (when it genuinely helps the learner understand):
-1. More examples — include 1-3 short everyday examples the child can relate to (market, food, football, family).
-2. A picture to make it visual. When an image would help, add at the END of your reply:
+    parts.push(`\nADD MEDIA TO EVERY REAL TEACHING LESSON. For any lesson (not chitchat/greetings/short answers), you MUST add a picture, and a video link when a real one exists. Keep the teaching text tight (2-3 short paragraphs) so the media always fits. At the END of your reply, after the main text, add exactly this block (no other formatting):
 
 ===MEDIA===
-IMAGE: <short child-friendly keywords describing the picture, e.g. "fractions of a banku and okro meal divided into halves">
+IMAGE: <short child-friendly keywords for a picture of this topic, e.g. "kids scooping water to show evaporation and condensation">
+VIDEO: https://www.youtube.com/watch?v=<a REAL, well-known video on this topic>
 ===END===
 
-3. A short video or lesson link for curious learners. Only when a real, trustworthy one matches the topic. Add any video AFTER the image block, like:
-
-VIDEO: https://www.youtube.com/watch?v=xxxxxxxx
-
-Rules: NEVER invent links. Only use real links you are certain exist on YouTube, Khan Academy, or BBC Bitesize. If you are not sure a link is real, omit it. Do NOT add a media block to trivial chitchat, greetings, or short answers — only to real teaching lessons. Keep the main teaching text clear and complete on its own, even if the image/video can't load.`);
+Rules: NEVER invent video URLs — only use a real, famous video you are 100% sure exists on YouTube (or Khan Academy / BBC Bitesize). If unsure, omit the VIDEO line but always keep the IMAGE line. Only add the block to real teaching lessons, not to greetings, chitchat, or 'thank you'. The main teaching text must be complete on its own even if the image/video fails to load.`);
   }
   return parts.join('\n');
 }
@@ -269,7 +266,7 @@ async function generateAIReply(messages, schoolId) {
             contents,
             generationConfig: {
               temperature: 0.7,
-              maxOutputTokens: 900,
+              maxOutputTokens: 2048,
               topP: 0.9,
             },
           }),
@@ -322,7 +319,7 @@ async function* streamAIReply(messages) {
           body: JSON.stringify({
             system_instruction: { parts: [{ text: systemText }] },
             contents,
-            generationConfig: { temperature: 0.7, maxOutputTokens: 900, topP: 0.9 },
+            generationConfig: { temperature: 0.7, maxOutputTokens: 2048, topP: 0.9 },
           }),
         }
       );
