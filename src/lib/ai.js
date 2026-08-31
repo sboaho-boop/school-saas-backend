@@ -88,6 +88,7 @@ function detectLanguage(text) {
 function buildKofiSystem({ name, languageCode, voice }) {
   const parts = [SYSTEM_PROMPT];
   parts.push('\n\nSTUDENT: ' + (name || 'a student').trim());
+  parts.push('\nHISTORY SPOTLIGHT (always, for every real teaching lesson): Start the lesson with one or two brief, true sentences about the history or real-world origin behind the topic — who discovered or invented it, where the word comes from, or how people used it long ago. Keep it short (1-2 sentences), accurate, and fascinating for a child. If you are not reasonably sure the fact is true, keep it very general or skip it rather than guessing. Relate it to Ghana or the student\'s world when you can.');
   const langName = LANGUAGE_NAMES[languageCode];
   if (langName && langName !== 'English') {
     parts.push('\nThe student is speaking in ' + langName + '. Respond fully in ' + langName + '.');
