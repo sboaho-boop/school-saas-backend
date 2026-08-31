@@ -165,7 +165,7 @@ router.post('/image', async (req, res) => {
       return res.status(403).json({ error: 'Daily limit reached (' + limit.used + '/' + limit.limit + '). Upgrade for more.', limit });
     }
 
-    let imagePrompt = buildImagePrompt(prompt, style);
+    let imagePrompt = buildClearPrompt(prompt) + (style === 'real' ? ' realistic photograph, sharp crisp focus, natural lighting.' : ' bright, friendly, child-friendly cartoon illustration.');
     let imageData = null;
 
     // Primary: OpenAI DALL-E 3 (used only if a key is configured)
