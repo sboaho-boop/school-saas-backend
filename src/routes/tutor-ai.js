@@ -268,7 +268,14 @@ router.get('/history', async (req, res) => {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-    res.json(conversations);
+    const data = conversations.map((c) => {
+      let media = null;
+      if (c.media) {
+        try { media = JSON.parse(c.media); } catch { media = null; }
+      }
+      return { userMessage: c.userMessage, aiResponse: c.aiResponse, media };
+    });
+    res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
