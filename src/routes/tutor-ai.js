@@ -1,4 +1,5 @@
 const { generateAIReply, streamAIReply, transcribeAudio, detectLanguage, buildKofiSystem } = require('../lib/ai');
+const { synthesize, supportedLanguage, isTtsConfigured } = require('../lib/google-tts');
 const { Router } = require('express');
 const multer = require('multer');
 const OpenAI = require('openai');
@@ -235,6 +236,31 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
   } catch (err) {
     console.error('[tutor voice] Error:', err.message);
     res.status(500).json({ error: err.message || 'Voice processing failed' });
+  }
+});
+
+// Cloud speech synthesis: returns MP3 audio for Teacher Kofi's voice replies.
+router.post('/speak', async (req, res) => {
+  try {
+    const { text, lang } = req.body;
+    if (!text || !String(text).trim()) return res.status(400).json({ error: 'Text required' });
+    const code = supportedLanguage(lang || 'en');
+    if (!code) return res.status(400).json({ error: 'Language not supported for speech', fallback: true });
+    if (!isTtsConfigured()) {
+      return res.status(503).json({ error: 'Text-to-speech is not configured', fallback: true });
+    }
+
+    const audio = await synthesize(String(text).trim(), code);
+    if (!audio) {
+      return res.status(503).json({ error: 'Speech synthesis failed', fallback: true });
+    }
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(audio);
+  } catch (err) {
+    console.error('[tutor speak] Error:', err.message);
+    res.status(503).json({ error: 'Speech synthesis failed', fallback: true });
   }
 });
 
