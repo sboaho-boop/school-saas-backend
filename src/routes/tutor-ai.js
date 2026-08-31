@@ -1,5 +1,5 @@
 const { generateAIReply, streamAIReply, transcribeAudio, detectLanguage, buildKofiSystem } = require('../lib/ai');
-const { parseRichReply, resolveImages, stripImageData } = require('../lib/rich-media');
+const { parseRichReply, resolveImages, stripImageData, generateImage, buildClearPrompt } = require('../lib/rich-media');
 const { Router } = require('express');
 const multer = require('multer');
 const OpenAI = require('openai');
@@ -146,13 +146,12 @@ router.post('/chat/stream', async (req, res) => {
   }
 });
 
-function buildImagePrompt(prompt, style) {
-  const safe = String(prompt || '').trim().slice(0, 500) || 'a happy Ghanaian child studying';
-  const real = style === 'real';
-  const base = real
-    ? safe + '. Style: realistic photograph, sharp focus, natural lighting, high detail.'
-    : safe + '. Style: bright, friendly, child-friendly cartoon illustration for a young student (ages 4-16).';
-  return base + ' Colorful, wholesome, educational. No scary, violent, or inappropriate content. No extra text.';
+// Lazy import of the MIME detection used by the rich-media helper.
+function detectMime(buf) {
+  if (!buf || buf.length < 4) return 'png';
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpeg';
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'png';
+  return 'png';
 }
 
 router.post('/image', async (req, res) => {
@@ -166,10 +165,10 @@ router.post('/image', async (req, res) => {
       return res.status(403).json({ error: 'Daily limit reached (' + limit.used + '/' + limit.limit + '). Upgrade for more.', limit });
     }
 
-    const imagePrompt = buildImagePrompt(prompt, style);
+    let imagePrompt = buildImagePrompt(prompt, style);
     let imageData = null;
 
-    // Primary: OpenAI DALL-E 3
+    // Primary: OpenAI DALL-E 3 (used only if a key is configured)
     if (process.env.OPENAI_API_KEY) {
       try {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -181,24 +180,20 @@ router.post('/image', async (req, res) => {
           response_format: 'b64_json',
         });
         const b64 = result.data?.[0]?.b64_json;
-        if (b64) imageData = 'data:image/png;base64,' + b64;
+        if (b64) {
+          imagePrompt = buildClearPrompt(prompt) + (style === 'real' ? ' realistic photograph, sharp focus, natural lighting.' : ' bright child-friendly cartoon illustration.');
+          imageData = 'data:image/' + detectMime(Buffer.from(b64, 'base64')) + ';base64,' + b64;
+        }
       } catch (err) {
         console.error('DALL-E error:', err.message);
       }
     }
 
-    // Fallback: Pollinations (free, no key)
+    // Fallback: Pollinations (free, no key) with retries + correct MIME type
     if (!imageData) {
-      try {
-        const url = 'https://image.pollinations.ai/prompt/' + encodeURIComponent(imagePrompt) + '?width=1024&height=1024&nologo=true';
-        const imgRes = await fetch(url, { signal: AbortSignal.timeout(60000) });
-        if (imgRes.ok) {
-          const buf = Buffer.from(await imgRes.arrayBuffer());
-          imageData = 'data:image/png;base64,' + buf.toString('base64');
-        }
-      } catch (err) {
-        console.error('Pollinations error:', err.message);
-      }
+      imagePrompt = buildClearPrompt(prompt) + (style === 'real' ? ' realistic photograph, sharp focus, natural lighting.' : ' bright child-friendly cartoon illustration.');
+      imageData = await generateImage(imagePrompt, { width: 1024, height: 1024 });
+      if (!imageData) console.error('Pollinations failed after retries.');
     }
 
     if (!imageData) return res.status(503).json({ error: 'Image generation is not available right now. Try again later.' });

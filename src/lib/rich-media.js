@@ -55,17 +55,77 @@ function allowedUrl(raw) {
   return url.href;
 }
 
-async function fetchImage(keywords) {
-  const prompt = String(keywords || '')
-    .replace(/\s+/g, ' ').trim().slice(0, 300) || 'a friendly illustrated scene for kids';
-  const url = 'https://image.pollinations.ai/prompt/' + encodeURIComponent(prompt) + '?width=768&height=480&nologo=true';
-  try {
-    const imgRes = await fetch(url, { signal: AbortSignal.timeout(60000) });
-    if (!imgRes.ok) return null;
-    return 'data:image/png;base64,' + Buffer.from(await imgRes.arrayBuffer()).toString('base64');
-  } catch {
-    return null;
+// Detects the actual image MIME type from the first bytes so browsers render
+// the picture correctly (Pollinations/DALL-E can return JPEG even when we
+// request PNG). Falls back to png.
+function mimeFromBuffer(buf) {
+  if (!buf || buf.length < 4) return 'png';
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpeg';
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'png';
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'gif';
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46) return 'webp';
+  return 'png';
+}
+
+function dataUriFromBuffer(buf) {
+  return 'data:image/' + mimeFromBuffer(buf) + ';base64,' + Buffer.from(buf).toString('base64');
+}
+
+// Clarity-focused builder: turns a short subject into a prompt tuned to produce
+// a sharp, well-lit, easy-to-read image for a young learner. Applies to both
+// auto lesson pictures and the draw-a-picture button.
+function buildClearPrompt(subject) {
+  const safe = String(subject || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 400) || 'a friendly happy scene for kids learning';
+  return (
+    safe +
+    '. Make the image crisp and easy to understand for a young student: sharp clean outlines, bright natural lighting, ' +
+    'large clear main subject, simple uncluttered background, high detail, good contrast. Educational and wholesome, ' +
+    'nothing scary, violent or inappropriate, no handwriting, no extra text or labels, no watermark.'
+  );
+}
+
+// Generates an image from a short subject using the free Pollinations service.
+// Retries a couple of times and fixes the MIME type so it always displays.
+// Resolves to a data URI, or null if every attempt fails.
+async function generateImage(subject, opts = {}) {
+  const prompt = buildClearPrompt(subject);
+  const width = opts.width || 1024;
+  const height = opts.height || 1024;
+  const query = new URLSearchParams({
+    width: String(width),
+    height: String(height),
+    nologo: 'true',
+    model: 'flux',
+    enhance: 'true',
+    private: 'true',
+  });
+  const base = 'https://image.pollinations.ai/prompt/' + encodeURIComponent(prompt) + '?' + query.toString();
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const imgRes = await fetch(base, { signal: AbortSignal.timeout(60000) });
+      if (!imgRes.ok) {
+        await new Promise((r) => setTimeout(r, 1500 * attempt));
+        continue;
+      }
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      if (!buf || buf.length < 1000) continue;
+      return dataUriFromBuffer(buf);
+    } catch {
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
   }
+  return null;
+}
+
+// Short subject -> picture (used by rich lessons). Wraps generateImage with a
+// landscape crop suited to inline illustrations.
+async function fetchImage(keywords) {
+  const subject = String(keywords || '').trim().slice(0, 200) || 'a friendly illustrated scene for kids';
+  return generateImage(subject, { width: 768, height: 480 });
 }
 
 // Parses a reply that may contain a ===MEDIA===...===END=== block.
@@ -119,4 +179,4 @@ function stripImageData(media) {
   });
 }
 
-module.exports = { parseRichReply, resolveImages, stripImageData };
+module.exports = { parseRichReply, resolveImages, stripImageData, generateImage, buildClearPrompt };
