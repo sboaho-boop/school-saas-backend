@@ -121,14 +121,25 @@ router.post('/chat/stream', async (req, res) => {
       send({ token });
     }
 
+    // If Gemini streaming produced nothing, fall back to a full generate call
+    // (generateContent is more reliable than streamGenerateContent when throttled).
+    if (!text.trim()) {
+      const full = await generateAIReply(messages);
+      if (full && full.trim()) text = full;
+    }
+
     if (!text.trim()) {
       if (!aborted) send({ error: 'AI service not configured.' });
       res.end();
       return;
     }
 
+    // Give image/media generation a hard deadline so the stream always finishes.
     const parsed = parseRichReply(text);
-    await resolveImages(parsed.media);
+    const deadline = new Promise((resolve) => {
+      setTimeout(resolve, 25000);
+    });
+    await Promise.race([resolveImages(parsed.media), deadline]);
     const media = parsed.media;
     const reply = parsed.text;
     if (media && media.length) send({ media });

@@ -313,26 +313,27 @@ async function generateAIReply(messages, schoolId) {
 }
 
 async function* streamAIReply(messages) {
-  // Try Gemini first (streaming SSE)
+  // Try Gemini first (streaming SSE), with a retry on transient errors
   if (process.env.GEMINI_API_KEY) {
-    try {
-      const { systemText, contents } = await geminiContents(messages);
-      const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const { systemText, contents } = await geminiContents(messages);
+        const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemText }] },
-            contents,
-            generationConfig: { temperature: 0.7, maxOutputTokens: 1200, topP: 0.9 },
-          }),
-        }
-      );
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${process.env.GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              system_instruction: { parts: [{ text: systemText }] },
+              contents,
+              generationConfig: { temperature: 0.7, maxOutputTokens: 1200, topP: 0.9 },
+            }),
+          }
+        );
 
-      if (res.ok && res.body) {
+        if (res.ok && res.body) {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -377,9 +378,20 @@ async function* streamAIReply(messages) {
       } else {
         const text = await res.text();
         console.error('Gemini stream HTTP error:', res.status, text.slice(0, 200));
+        if (/429|503|RATE|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(res.statusText || '') || res.status === 429 || res.status === 503) {
+          if (attempt === 1) {
+            await new Promise((r) => setTimeout(r, 1500));
+            continue;
+          }
+        }
       }
-    } catch (err) {
-      console.error('Gemini stream error:', err.message);
+      } catch (err) {
+        console.error('Gemini stream error:', err.message);
+        if (attempt === 1) {
+          await new Promise((r) => setTimeout(r, 1200));
+          continue;
+        }
+      }
     }
   }
 
