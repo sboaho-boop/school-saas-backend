@@ -1,5 +1,6 @@
 const { generateAIReply, streamAIReply, transcribeAudio, detectLanguage, buildKofiSystem } = require('../lib/ai');
 const { parseRichReply, resolveImages, stripImageData, generateImage, buildClearPrompt } = require('../lib/rich-media');
+const { recordActivity, getProgress } = require('../lib/kofi-progress');
 const { Router } = require('express');
 const multer = require('multer');
 const OpenAI = require('openai');
@@ -69,9 +70,12 @@ router.post('/chat', async (req, res) => {
     const media = parsed.media;
 
     const remaining = limit.remaining === -1 ? -1 : Math.max(0, limit.remaining - 1);
+    const isLesson = media && media.length > 0;
     persistTutorUsage(req.userId, limit.isNewDay ? 1 : limit.used + 1, limit.isNewDay, {
       data: { userId: req.userId, userMessage: message, aiResponse: reply, media: media ? JSON.stringify(stripImageData(media)) : null },
     }).catch(() => {});
+
+    recordActivity({ userId: req.userId, userMessage: message, aiResponse: reply, isLesson }).catch(() => {});
 
     res.json({ reply, remaining, media });
   } catch (err) {
@@ -138,6 +142,7 @@ router.post('/chat/stream', async (req, res) => {
       persistTutorUsage(req.userId, limit.isNewDay ? 1 : limit.used + 1, limit.isNewDay, {
         data: { userId: req.userId, userMessage: message, aiResponse: reply, media: media && media.length ? JSON.stringify(stripImageData(media)) : null },
       }).catch(() => {});
+      recordActivity({ userId: req.userId, userMessage: message, aiResponse: reply, isLesson: media && media.length > 0 }).catch(() => {});
     }
   } catch (err) {
     console.error('Tutor AI stream error:', err.message);
@@ -253,6 +258,26 @@ router.post('/voice', upload.single('audio'), async (req, res) => {
   } catch (err) {
     console.error('[tutor voice] Error:', err.message);
     res.status(500).json({ error: err.message || 'Voice processing failed' });
+  }
+});
+
+router.get('/progress', async (req, res) => {
+  try {
+    const progress = await getProgress(req.userId);
+    res.json(progress);
+  } catch (err) {
+    console.error('Tutor progress error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/curriculum', async (req, res) => {
+  try {
+    const progress = await getProgress(req.userId);
+    res.json({ bySubject: progress.bySubject, topics: progress.topics });
+  } catch (err) {
+    console.error('Tutor curriculum error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

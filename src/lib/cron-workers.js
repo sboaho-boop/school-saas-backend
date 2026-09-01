@@ -2,10 +2,12 @@ const prisma = require('../lib/prisma');
 const { resolveAudience } = require('../lib/audience-resolver');
 const { triggerNotification, NOTIFICATION_TYPES } = require('../lib/notification-engine');
 const { sendSmsPost, sendBatchSms } = require('../lib/sms');
+const { sendEmail } = require('../lib/email');
 
 const POLL_INTERVAL = 60 * 1000;
 
 let running = false;
+let reminderRunning = false;
 
 async function processScheduledMessages() {
   if (running) return;
@@ -233,6 +235,74 @@ async function processTutorSubscriptionRenewals() {
   }
 }
 
+async function sendTutorRenewalReminders() {
+  try {
+    if (reminderRunning) return;
+    reminderRunning = true;
+    const now = new Date();
+    const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+    const users = await prisma.tutorUser.findMany({
+      where: {
+        plan: { not: 'free' },
+        subscriptionEnd: { lte: threeDaysFromNow },
+      },
+    });
+
+    for (const user of users) {
+      const ends = user.subscriptionEnd ? new Date(user.subscriptionEnd) : null;
+      const expiringSoon = ends && ends > now;
+      const daysLeft = ends ? Math.max(0, Math.ceil((ends - now) / (24 * 60 * 60 * 1000))) : 0;
+
+      // Skip if we already reminded them about this same expiry window recently
+      if (user.renewalReminderDate === now.toISOString().slice(0, 10)) continue;
+
+      const subject = expiringSoon
+        ? `Your Teacher Kofi plan renews in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
+        : 'Your Teacher Kofi plan has expired - renew now';
+
+      const statusLine = expiringSoon
+        ? `Your ${user.plan} plan is still active and ends on ${ends.toDateString()}.`
+        : `Your ${user.plan} plan ended on ${ends ? ends.toDateString() : 'recently'}. You've been switched back to the free plan.`;
+
+      const html = `
+        <h2>Hi ${user.name.split(' ')[0]},</h2>
+        <p>${statusLine}</p>
+        <p>Keep your Teacher Kofi lessons going - renew your plan to get back full access to the pro features:</p>
+        <ul>
+          <li>Unlimited daily AI lessons</li>
+          <li>Voice lessons & media</li>
+          <li>Progress tracking & streaks</li>
+          <li>Ghanaian curriculum coverage</li>
+        </ul>
+        <p><a href="https://eduplatformsoftware.com/tutor/pricing" style="display:inline-block;padding:12px 24px;background:#16a34a;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">Renew now →</a></p>
+        <p>Payment is quick and safe via Hubtel Mobile Money or card. Renew before your plan ends to keep your streak and progress.</p>
+        <p>Cheers,<br/>Teacher Kofi 🎒</p>
+      `;
+
+      try {
+        const sent = await sendEmail(user.email, subject, html);
+        if (sent && sent.success) {
+          // Mark this expiry window as reminded
+          await prisma.tutorUser.update({
+            where: { id: user.id },
+            data: { renewalReminderDate: now.toISOString().slice(0, 10) },
+          }).catch(() => {});
+          console.log(`[tutor-reminders] Reminded ${user.email} (${expiringSoon ? 'expiring' : 'expired'}, ${daysLeft}d)`);
+        } else {
+          console.warn(`[tutor-reminders] Email skipped for ${user.email}: ${sent ? sent.reason : 'unknown'}`);
+        }
+      } catch (err) {
+        console.error(`[tutor-reminders] Email failed for ${user.email}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[tutor-reminders] Error:', err.message);
+  } finally {
+    reminderRunning = false;
+  }
+}
+
 function startCronWorkers() {
   console.log('[cron] Starting scheduled message processor...');
   setInterval(processScheduledMessages, POLL_INTERVAL);
@@ -249,7 +319,11 @@ function startCronWorkers() {
   setInterval(processTutorSubscriptionRenewals, 6 * 60 * 60 * 1000);
   setTimeout(processTutorSubscriptionRenewals, 5000);
 
+  console.log('[cron] Starting Teacher Kofi renewal reminders (every 6 hours)...');
+  setInterval(sendTutorRenewalReminders, 6 * 60 * 60 * 1000);
+  setTimeout(sendTutorRenewalReminders, 5000);
+
   console.log('[cron] All workers started.');
 }
 
-module.exports = { startCronWorkers, processScheduledMessages, checkOverdueFees, cleanupStalePushSubscriptions, processTutorSubscriptionRenewals };
+module.exports = { startCronWorkers, processScheduledMessages, checkOverdueFees, cleanupStalePushSubscriptions, processTutorSubscriptionRenewals, sendTutorRenewalReminders };

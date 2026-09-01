@@ -1100,10 +1100,35 @@ model TutorUser {
   subscriptionEnd   DateTime?
   dailyUsage      Int       @default(0)
   dailyUsageDate  String    @default("")
+
+  xp              Int       @default(0)
+  masteryStreak   Int       @default(0)
+  lastActiveDate  String    @default("")
+  lessonsCompleted Int     @default(0)
+  topicsMastered  String?
+  renewalReminderDate String @default("")
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   conversations TutorConversation[]
+  curriculum    TutorCurriculumProgress[]
+}
+
+model TutorCurriculumProgress {
+  id            String   @id @default(cuid())
+  userId        String
+  subject       String
+  grade         String   @default("")
+  chapter       String
+  title         String   @default("")
+  status        String   @default("locked")
+  masteryScore  Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  user TutorUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, subject, chapter])
 }
 
 model TutorConversation {
