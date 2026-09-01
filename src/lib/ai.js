@@ -250,49 +250,57 @@ async function transcribeAudio(buffer, mimeType, lang) {
 }
 
 async function generateAIReply(messages, schoolId) {
-  // Try Gemini first (free tier)
+  // Try Gemini first (primary, paid or free tier)
   if (process.env.GEMINI_API_KEY) {
-    try {
-      const { systemText, contents } = await geminiContents(messages);
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const { systemText, contents } = await geminiContents(messages);
 
-      const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemText }] },
-            contents,
-            generationConfig: {
-              temperature: 0.7,
-              maxOutputTokens: 1200,
-              topP: 0.9,
-            },
-          }),
+        const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              system_instruction: { parts: [{ text: systemText }] },
+              contents,
+              generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 1200,
+                topP: 0.9,
+              },
+            }),
+          }
+        );
+
+        const data = await res.json();
+        if (data.error) {
+          console.error('Gemini API error:', data.error.message);
+          // Transient overload/rate-limit? brief pause then retry
+          if ((/429|503|RATE|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(data.error.message || '')) && attempt === 1) {
+            await new Promise((r) => setTimeout(r, 1500));
+            continue;
+          }
+        } else {
+          const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (reply) return reply;
         }
-      );
-
-      const data = await res.json();
-      if (data.error) {
-        console.error('Gemini API error:', data.error.message);
-      } else {
-        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (reply) return reply;
+      } catch (err) {
+        console.error('Gemini error:', err.message);
+        if (attempt === 1) await new Promise((r) => setTimeout(r, 1500));
       }
-    } catch (err) {
-      console.error('Gemini error:', err.message);
     }
   }
 
-  // Fallback to OpenAI
+  // Fallback to OpenAI (paid, robust)
   if (process.env.OPENAI_API_KEY) {
     try {
       const ai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       const completion = await ai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages,
-        max_tokens: 1024,
+        max_tokens: 1200,
         temperature: 0.7,
       });
       return completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
