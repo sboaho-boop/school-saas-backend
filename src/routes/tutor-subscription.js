@@ -8,6 +8,7 @@ const {
   preapprovalStatus,
   preapprovalCancel,
 } = require('../lib/hubtel-direct-debit');
+const { createCheckout } = require('../lib/hubtel-payment');
 
 const router = Router();
 
@@ -114,6 +115,94 @@ router.post('/init', authenticateTutor, async (req, res) => {
   } catch (err) {
     console.error('Subscription init error:', err.message);
     res.status(500).json({ error: err.message || 'Could not start the payment.' });
+  }
+});
+
+// 1b. Web Checkout alternative: create a hosted Hubtel checkout session
+//     (customer pays immediately via MoMo/card on pay.hubtel.com). No
+//     Direct Debit/Preapproval needed, works with standard payment keys.
+router.post('/checkout/init', authenticateTutor, async (req, res) => {
+  try {
+    const { plan } = req.body;
+    if (!PLANS[plan]) return res.status(400).json({ error: 'Invalid plan. Use "pro" or "unlimited".' });
+
+    const user = await prisma.tutorUser.findUnique({
+      where: { id: req.userId },
+      select: { id: true, name: true, email: true },
+    });
+    if (!user) return res.status(404).json({ error: 'Account not found' });
+
+    const reference = `TKCHK-${user.id}-${Date.now()}`;
+    const checker = createCheckout({
+      amount: PLANS[plan].amount,
+      title: PLANS[plan].name + ' Subscription',
+      description: `${PLANS[plan].name} subscription for ${PLANS[plan].interval} (GHS ${PLANS[plan].amount})`,
+      clientReference: reference,
+      payeeName: user.name || '',
+      payeeEmail: user.email || '',
+      callbackUrl: `${BASE_URL}/api/tutor/subscription/webhook/checkout`,
+      returnUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/tutor/dashboard?billing=success`,
+      cancellationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/tutor/dashboard?billing=cancelled`,
+      schoolCredentials: getHubtelCredentials(),
+    });
+
+    const result = await checker;
+    if (!result.checkoutUrl) {
+      return res.status(502).json({ error: 'Hubtel did not return a checkout URL.' });
+    }
+
+    await prisma.tutorUser.update({
+      where: { id: user.id },
+      data: {
+        paystackPlan: plan,
+        hubtelClientReference: reference,
+        hubtelPreapprovalStatus: 'PENDING',
+      },
+    });
+
+    res.json({ success: true, checkoutUrl: result.checkoutUrl, checkoutId: result.checkoutId, clientReference: reference });
+  } catch (err) {
+    console.error('Subscription checkout init error:', err.message);
+    res.status(500).json({ error: err.message || 'Could not start the payment.' });
+  }
+});
+
+// 1c. Web Checkout webhook: confirmed payment activates the plan for a month.
+router.post('/webhook/checkout', async (req, res) => {
+  try {
+    const data = req.body.Data || req.body || {};
+    const clientReference = data.ClientReference || data.clientReference || data.OrderId || data.CheckoutId;
+    const status = String(data.Status || data.status || data.Message || '').toUpperCase();
+    const code = String(data.ResponseCode || data.responseCode || '');
+    const paid = code === '0000' || /SUCCESS|COMPLETED|PAID/i.test(status);
+
+    if (clientReference && String(clientReference).startsWith('TKCHK-')) {
+      if (paid) {
+        const user = await prisma.tutorUser.findUnique({ where: { hubtelClientReference: clientReference } });
+        const plan = user?.paystackPlan && PLANS[user.paystackPlan] ? user.paystackPlan : 'pro';
+        const now = new Date();
+        const periodEnd = new Date(now);
+        periodEnd.setMonth(periodEnd.getMonth() + 1);
+        await prisma.tutorUser.update({
+          where: { id: user.id },
+          data: {
+            plan,
+            subscriptionStart: now,
+            subscriptionEnd: periodEnd,
+            dailyUsage: 0,
+            dailyUsageDate: '',
+            hubtelPreapprovalStatus: 'APPROVED',
+          },
+        });
+        console.log(`Tutor checkout paid: ${clientReference} -> ${plan}`);
+      } else {
+        console.log(`Tutor checkout not paid: ${clientReference} (${status || code})`);
+      }
+    }
+    res.status(200).json({ message: 'OK' });
+  } catch (err) {
+    console.error('Tutor checkout webhook error:', err.message);
+    res.status(200).json({ message: 'OK' });
   }
 });
 
