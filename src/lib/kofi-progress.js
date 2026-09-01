@@ -1,12 +1,12 @@
 const prisma = require('./prisma');
 
 const SUBJECT_KEYWORDS = {
-  'Mathematics': ['maths', 'math', 'mathematics', 'addition', 'subtraction', 'multiplication', 'division', 'fraction', 'decimal', 'percentage', 'geometry', 'algebra', 'number', 'counting', 'sum', 'minus', 'plus', 'times', 'divide', 'area', 'perimeter', 'fractions'],
+  'Mathematics': ['maths', 'math', 'mathematics', 'addition', 'subtraction', 'multiplication', 'multiply', 'division', 'fraction', 'decimal', 'percentage', 'percent', 'geometry', 'algebra', 'number', 'counting', 'sum', 'minus', 'plus', 'times', 'divide', 'area', 'perimeter', 'fractions', 'factorial', 'equation', 'problem'],
   'English': ['english', 'grammar', 'spelling', 'vocabulary', 'reading', 'letter', 'alphabet', 'noun', 'verb', 'adjective', 'pronoun', 'comprehension', 'sentence', 'story', 'poem', 'punctuation'],
-  'Science': ['science', 'plant', 'animal', 'water', 'energy', 'force', 'light', 'sound', 'weather', 'human body', 'habitat', 'temperature', 'magnet', 'evaporation', 'gravity', 'cell', 'soil', 'air'],
-  'Social Studies': ['social', 'history', 'geography', 'ghana', 'culture', 'map', 'chief', 'independence', 'traditional', 'community', 'civil', 'festival', 'rivers'],
-  'ICT': ['computer', 'ict', 'internet', 'technology', 'keyboard', 'mouse', 'software', 'hardware', 'email', 'typing', 'laptop'],
-  'Ghanaian Language': ['twi', 'ga', 'ewe', 'fante', 'hausa', 'dagbani', 'akwaaba', 'da yie', 'words in twi', 'ghanai'],
+  'Science': ['science', 'plant', 'animal', 'water', 'energy', 'force', 'light', 'sound', 'weather', 'human', 'body', 'habitat', 'temperature', 'magnet', 'evaporation', 'condensation', 'gravity', 'cell', 'soil', 'air', 'photosynthesis', 'plants', 'experiment', 'pollution'],
+  'Social Studies': ['social', 'history', 'geography', 'ghana', 'culture', 'map', 'chief', 'independence', 'traditional', 'community', 'civil', 'festival', 'river', 'capital', 'citizen'],
+  'ICT': ['computer', 'ict', 'internet', 'technology', 'keyboard', 'mouse', 'software', 'hardware', 'email', 'typing', 'laptop', 'programming', 'website'],
+  'Ghanaian Language': ['twi', 'akwaaba', 'da yie', 'fante', 'hausa', 'dagbani', 'ewe', 'ga language', 'ghanai', 'words in twi'],
 };
 
 function guessSubject(text) {
@@ -14,7 +14,11 @@ function guessSubject(text) {
   let best = null;
   let bestScore = 0;
   for (const [subject, keywords] of Object.entries(SUBJECT_KEYWORDS)) {
-    const score = keywords.filter((k) => hay.includes(k)).length;
+    let score = 0;
+    for (const kw of keywords) {
+      const rx = new RegExp('\\b' + kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      if (rx.test(hay)) score++;
+    }
     if (score > bestScore) {
       best = subject;
       bestScore = score;
@@ -28,7 +32,7 @@ function guessChapter(text, subject) {
   // Prefer the actual topic keyword(s) the student used
   const keywords = SUBJECT_KEYWORDS[subject] || [];
   const found = keywords
-    .filter((k) => hay.includes(k))
+    .filter((k) => new RegExp('\\b' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(hay))
     .sort((a, b) => b.length - a.length);
   if (found.length) {
     const picked = found[0];
@@ -71,7 +75,7 @@ async function recordActivity({ userId, userMessage, aiResponse, isLesson }) {
     await prisma.tutorUser.update({ where: { id: userId }, data: updated });
 
     // Curriculum progress
-    const subject = guessSubject(aiResponse || '');
+    const subject = guessSubject(userMessage || '');
     const chapter = guessChapter(userMessage, subject);
     const existing = await prisma.tutorCurriculumProgress.findUnique({
       where: { userId_subject_chapter: { userId, subject, chapter } },
