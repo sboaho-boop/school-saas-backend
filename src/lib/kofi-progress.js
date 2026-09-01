@@ -25,11 +25,20 @@ function guessSubject(text) {
 
 function guessChapter(text, subject) {
   const hay = (text || '').toLowerCase();
-  // Try to find a 2-4 word noun phrase ending the first sentence as a rough title.
+  // Prefer the actual topic keyword(s) the student used
+  const keywords = SUBJECT_KEYWORDS[subject] || [];
+  const found = keywords
+    .filter((k) => hay.includes(k))
+    .sort((a, b) => b.length - a.length);
+  if (found.length) {
+    const picked = found[0];
+    return picked.charAt(0).toUpperCase() + picked.slice(1);
+  }
+  // Fallback: first meaningful noun phrase in the message
   const words = hay.split(/[^a-z0-9 ]+/).filter(Boolean).join(' ').split(' ');
   if (words.length < 2) return subject;
   const meaningful = words.filter((w) => w.length > 3).slice(0, 3).join(' ');
-  return meaningful || subject;
+  return meaningful.charAt(0).toUpperCase() + meaningful.slice(1) || subject;
 }
 
 async function recordActivity({ userId, userMessage, aiResponse, isLesson }) {
