@@ -132,7 +132,8 @@ router.post('/checkout/init', authenticateTutor, async (req, res) => {
     });
     if (!user) return res.status(404).json({ error: 'Account not found' });
 
-    const reference = `TKCHK-${user.id}-${Date.now()}`;
+    const userKey = String(user.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(-6);
+    const reference = `TKCHK-${Date.now().toString(36)}${userKey}`.slice(0, 32);
     const checker = createCheckout({
       amount: PLANS[plan].amount,
       title: PLANS[plan].name + ' Subscription',
