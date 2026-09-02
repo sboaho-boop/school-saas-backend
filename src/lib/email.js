@@ -34,6 +34,10 @@ async function sendEmail(to, subject, html) {
   }
 }
 
+function emailConfigured() {
+  return !!(SMTP_HOST && SMTP_USER && SMTP_PASS);
+}
+
 async function sendOtpEmail(to, name, otp, verificationToken) {
   const verifyUrl = verificationToken
     ? `https://eduplatformsoftware.com/verify-email?token=${verificationToken}`
@@ -85,4 +89,4 @@ async function sendTutorWelcomeEmail(to, name) {
   `);
 }
 
-module.exports = { sendEmail, sendOtpEmail, sendTutorWelcomeEmail };
+module.exports = { sendEmail, sendOtpEmail, sendTutorWelcomeEmail, emailConfigured };

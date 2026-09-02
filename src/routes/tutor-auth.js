@@ -2,7 +2,7 @@ const { Router } = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
-const { sendTutorWelcomeEmail } = require('../lib/email');
+const { sendTutorWelcomeEmail, emailConfigured } = require('../lib/email');
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'teacher-kofi-secret';
@@ -46,17 +46,13 @@ router.post('/register', async (req, res) => {
     });
 
     const token = signToken(user.id);
-    // Fire-and-forget welcome email — never blocks registration or fails it
-    let welcomeEmail = null;
-    try {
-      const r = await sendTutorWelcomeEmail(user.email, user.name);
-      welcomeEmail = { sent: r.success === true, note: r.success ? '' : (r.reason || 'skipped') };
-      console.log('[welcome email]', JSON.stringify(welcomeEmail));
-    } catch (err) {
-      welcomeEmail = { sent: false, note: err.message };
+    // Fire-and-forget welcome email — never blocks or delays registration
+    sendTutorWelcomeEmail(user.email, user.name).then((r) => {
+      console.log('[welcome email] sent:', r.success === true, r.reason || '');
+    }).catch((err) => {
       console.error('[welcome email] error:', err.message);
-    }
-    res.status(201).json({ user, token, welcomeEmail });
+    });
+    res.status(201).json({ user, token, smtpConfigured: emailConfigured() });
   } catch (err) {
     console.error('Tutor register error:', err.message);
     res.status(500).json({ error: 'Registration failed' });
