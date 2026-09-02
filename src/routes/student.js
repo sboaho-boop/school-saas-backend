@@ -170,8 +170,14 @@ router.get('/timetable', authenticateStudent, async (req, res) => {
     const slots = await prisma.timetableSlot.findMany({
       where: { schoolId: req.schoolId, classId: student.classId },
       orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
-      include: { subject: { select: { name: true, code: true } } },
+      select: { id: true, dayOfWeek: true, startTime: true, endTime: true, room: true, subjectId: true, staffId: true },
     });
+    const subjectIds = [...new Set(slots.filter((s) => s.subjectId).map((s) => s.subjectId))];
+    const subjects = subjectIds.length
+      ? await prisma.subject.findMany({ where: { id: { in: subjectIds }, schoolId: req.schoolId }, select: { id: true, name: true, code: true } })
+      : [];
+    const subjectMap = {};
+    subjects.forEach((s) => { subjectMap[s.id] = s; });
     res.json(slots.map((s) => ({
       id: s.id,
       dayOfWeek: s.dayOfWeek,
@@ -179,8 +185,8 @@ router.get('/timetable', authenticateStudent, async (req, res) => {
       endTime: s.endTime,
       room: s.room,
       subjectId: s.subjectId,
-      subjectName: s.subject?.name || 'Free Period',
-      subjectCode: s.subject?.code || '',
+      subjectName: s.subjectId && subjectMap[s.subjectId] ? subjectMap[s.subjectId].name : 'Free Period',
+      subjectCode: s.subjectId && subjectMap[s.subjectId] ? subjectMap[s.subjectId].code : '',
       staffId: s.staffId,
     })));
   } catch (err) {
