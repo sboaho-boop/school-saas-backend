@@ -10,7 +10,7 @@ const MIME_BY_EXT = {
   '.gif': 'image/gif', '.heic': 'image/heic', '.avif': 'image/avif', '.bmp': 'image/bmp',
 };
 
-const WHISPER_LANG = { en: 'en', fr: 'fr', tw: 'ak', ha: 'ha', ga: 'en', ewe: 'ee', fante: 'ak', dagbani: 'dag' };
+const WHISPER_LANG = { en: 'en', fr: 'fr', tw: 'ak', ha: 'ha', ga: 'en', ewe: 'ee', fante: 'ak', dagbani: 'dag', ak: 'ak', ee: 'ee', sw: 'sw', ar: 'ar', yo: 'yo', ig: 'ig', am: 'am', zu: 'zu' };
 
 const AUDIO_FILENAME_BY_MIME = {
   'audio/wav': 'voice.wav', 'audio/x-wav': 'voice.wav', 'audio/wave': 'voice.wav',
@@ -69,6 +69,8 @@ const GH_LANGUAGE_MARKERS = {
 const LANGUAGE_NAMES = {
   en: 'English', fr: 'French', tw: 'Twi', ha: 'Hausa',
   ga: 'Ga', ewe: 'Ewe', fante: 'Fante', dagbani: 'Dagbani',
+  ak: 'Twi', ee: 'Ewe', sw: 'Swahili', ar: 'Arabic',
+  yo: 'Yoruba', ig: 'Igbo', am: 'Amharic', zu: 'Zulu',
 };
 
 const GROQ_BASE = 'https://api.groq.com/openai/v1';

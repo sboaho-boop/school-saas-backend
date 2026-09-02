@@ -148,6 +148,7 @@ router.get('/me', authenticateTutor, async (req, res) => {
         id: true, name: true, email: true, plan: true,
         subscriptionStart: true, subscriptionEnd: true,
         dailyUsage: true, dailyUsageDate: true, createdAt: true,
+        preferredLanguage: true,
       },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -159,11 +160,14 @@ router.get('/me', authenticateTutor, async (req, res) => {
 
 router.put('/me', authenticateTutor, async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, preferredLanguage } = req.body;
+    const data = {};
+    if (name) data.name = name;
+    if (preferredLanguage) data.preferredLanguage = preferredLanguage;
     const user = await prisma.tutorUser.update({
       where: { id: req.userId },
-      data: { ...(name && { name }) },
-      select: { id: true, name: true, email: true, plan: true },
+      data,
+      select: { id: true, name: true, email: true, plan: true, preferredLanguage: true },
     });
     res.json(user);
   } catch (err) {

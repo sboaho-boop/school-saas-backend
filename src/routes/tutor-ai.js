@@ -36,7 +36,7 @@ async function persistTutorUsage(userId, nextUsed, isNewDay, createConversation)
 
 router.post('/chat', async (req, res) => {
   try {
-    const { message, history, image } = req.body;
+    const { message, history, image, language } = req.body;
     if (!message) return res.status(400).json({ error: 'Message required' });
 
     const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { name: true, plan: true, dailyUsage: true, dailyUsageDate: true } });
@@ -45,7 +45,7 @@ router.post('/chat', async (req, res) => {
       return res.status(403).json({ error: 'Daily limit reached (' + limit.used + '/' + limit.limit + '). Upgrade for more.', limit });
     }
 
-    const languageCode = detectLanguage(message);
+    const languageCode = language || detectLanguage(message);
     const userMsg = { role: 'user', content: message };
     if (image) userMsg.image = image;
     const messages = [
@@ -86,7 +86,7 @@ router.post('/chat', async (req, res) => {
 
 router.post('/chat/stream', async (req, res) => {
   try {
-    const { message, history, image } = req.body;
+    const { message, history, image, language } = req.body;
     if (!message) return res.status(400).json({ error: 'Message required' });
 
     const user = await prisma.tutorUser.findUnique({ where: { id: req.userId }, select: { name: true, plan: true, dailyUsage: true, dailyUsageDate: true } });
@@ -95,7 +95,7 @@ router.post('/chat/stream', async (req, res) => {
       return res.status(403).json({ error: 'Daily limit reached (' + limit.used + '/' + limit.limit + '). Upgrade for more.', limit });
     }
 
-    const languageCode = detectLanguage(message);
+    const languageCode = language || detectLanguage(message);
     const userMsg = { role: 'user', content: message };
     if (image) userMsg.image = image;
     const messages = [

@@ -1107,6 +1107,7 @@ model TutorUser {
   lessonsCompleted Int     @default(0)
   topicsMastered  String?
   renewalReminderDate String @default("")
+  preferredLanguage String  @default("en")
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
