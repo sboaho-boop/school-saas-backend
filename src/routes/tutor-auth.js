@@ -24,6 +24,16 @@ function authenticateTutor(req, res, next) {
   }
 }
 
+// Temporary diagnostic: last welcome-email send results (for verifying prod delivery)
+const welcomeEmailResults = [];
+async function logWelcomeEmailResult(result) {
+  welcomeEmailResults.push({ at: new Date().toISOString(), result });
+  if (welcomeEmailResults.length > 20) welcomeEmailResults.shift();
+}
+router.get('/debug/welcome-email', (req, res) => {
+  res.json(welcomeEmailResults);
+});
+
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -49,8 +59,10 @@ router.post('/register', async (req, res) => {
     // Fire-and-forget welcome email — never blocks or delays registration
     sendTutorWelcomeEmail(user.email, user.name).then((r) => {
       console.log('[welcome email] sent:', r.success === true, r.reason || '');
+      logWelcomeEmailResult(r);
     }).catch((err) => {
       console.error('[welcome email] error:', err.message);
+      logWelcomeEmailResult({ error: err.message });
     });
     res.status(201).json({ user, token, smtpConfigured: emailConfigured() });
   } catch (err) {
