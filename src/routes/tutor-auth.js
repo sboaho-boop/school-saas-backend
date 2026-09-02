@@ -2,7 +2,7 @@ const { Router } = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
-const { sendTutorWelcomeEmail } = require('../lib/email');
+const { sendTutorWelcomeEmail, sendTutorResetEmail } = require('../lib/email');
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'teacher-kofi-secret';
@@ -84,6 +84,59 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     console.error('Tutor login error:', err.message);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    const user = await prisma.tutorUser.findUnique({ where: { email: email.toLowerCase() } });
+    if (user) {
+      const resetToken = jwt.sign({ userId: user.id, type: 'reset' }, JWT_SECRET, { expiresIn: '1h' });
+      const resetUrl = `https://eduplatformsoftware.com/tutor/reset-password?token=${resetToken}`;
+      sendTutorResetEmail(user.email, user.name, resetUrl).then((r) => {
+        if (!r.success) console.error('[reset email] not sent:', r.reason || '');
+      }).catch((err) => {
+        console.error('[reset email] error:', err.message);
+      });
+    }
+    // Always return success — never reveal whether the email exists
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Forgot password error:', err.message);
+    res.json({ success: true });
+  }
+});
+
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Token and new password are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.type !== 'reset') {
+      return res.status(400).json({ error: 'Invalid reset token' });
+    }
+
+    const hash = await bcrypt.hash(password, 10);
+    await prisma.tutorUser.update({
+      where: { id: decoded.userId },
+      data: { password: hash },
+    });
+    res.json({ success: true });
+  } catch (err) {
+    if (err.name === 'TokenExpiredError' || err.name === 'JsonWebTokenError') {
+      return res.status(400).json({ error: 'This reset link has expired or is invalid. Please request a new one.' });
+    }
+    console.error('Reset password error:', err.message);
+    res.status(500).json({ error: 'Password reset failed' });
   }
 });
 

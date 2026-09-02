@@ -103,4 +103,26 @@ async function sendTutorWelcomeEmail(to, name) {
   `);
 }
 
-module.exports = { sendEmail, sendOtpEmail, sendTutorWelcomeEmail, emailConfigured };
+async function sendTutorResetEmail(to, name, resetUrl) {
+  const first = (name || '').trim().split(/\s+/)[0] || 'there';
+  return sendEmail(to, 'Reset your Teacher Kofi password', `
+    <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+      <div style="background:linear-gradient(135deg,#7c3aed,#d946ef);border-radius:12px 12px 0 0;padding:28px 24px;text-align:center;">
+        <div style="color:#fff;font-size:28px;font-weight:bold;">Teacher Kofi</div>
+        <div style="color:#fcedff;font-size:14px;margin-top:4px;">Password Reset</div>
+      </div>
+      <div style="border:1px solid #eee;border-top:none;border-radius:0 0 12px 12px;padding:24px;">
+        <p style="color:#333;font-size:15px;line-height:1.6;">Hi ${first},</p>
+        <p style="color:#333;font-size:15px;line-height:1.6;">We received a request to reset the password for your Teacher Kofi account (<strong>${to}</strong>).</p>
+        <div style="text-align:center;margin:28px 0;">
+          <a href="${resetUrl}" style="background:#7c3aed;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">Reset Password</a>
+        </div>
+        <p style="color:#333;font-size:15px;line-height:1.6;">This link expires in <strong>1 hour</strong>. If you didn't request a password reset, you can safely ignore this email — your password will stay the same.</p>
+        <p style="font-size:12px;color:#888;margin-top:16px;">Button not working? Copy this link:<br/><a href="${resetUrl}">${resetUrl}</a></p>
+        <p style="color:#888;font-size:13px;margin-top:24px;">— The Teacher Kofi Team</p>
+      </div>
+    </div>
+  `);
+}
+
+module.exports = { sendEmail, sendOtpEmail, sendTutorWelcomeEmail, sendTutorResetEmail, emailConfigured };
