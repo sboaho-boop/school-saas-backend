@@ -71,6 +71,87 @@ const LANGUAGE_NAMES = {
   ga: 'Ga', ewe: 'Ewe', fante: 'Fante', dagbani: 'Dagbani',
 };
 
+const GROQ_BASE = 'https://api.groq.com/openai/v1';
+const GROQ_MODELS = [process.env.GROQ_MODEL || 'openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'groq/compound-mini'];
+
+function hasGroq() {
+  return !!(process.env.GROQ_API_KEY);
+}
+
+async function groqChat(messages, { maxTokens = 1200, stream = false } = {}) {
+  if (!hasGroq()) return null;
+  let lastErr = null;
+  for (const model of GROQ_MODELS) {
+    try {
+      const res = await fetch(GROQ_BASE + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.GROQ_API_KEY },
+        body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: maxTokens, stream }),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        lastErr = `HTTP ${res.status}: ${t.slice(0, 160)}`;
+        console.error('Groq error (' + model + '):', lastErr);
+        continue;
+      }
+      const data = await res.json();
+      const reply = data.choices?.[0]?.message?.content;
+      if (reply && reply.trim()) return reply.trim();
+    } catch (err) {
+      lastErr = err.message;
+      console.error('Groq error (' + model + '):', err.message);
+    }
+  }
+  return null;
+}
+
+async function* groqStream(messages, maxTokens = 900) {
+  if (!hasGroq()) return;
+  let emitted = 0;
+  for (const model of GROQ_MODELS) {
+    try {
+      const res = await fetch(GROQ_BASE + '/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.GROQ_API_KEY },
+        body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: maxTokens, stream: true }),
+      });
+      if (!res.ok || !res.body) {
+        const t = await res.text().catch(() => '');
+        console.error('Groq stream error (' + model + '):', res.status, t.slice(0, 160));
+        continue;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let sep = buffer.indexOf('\n\n');
+        while (sep !== -1) {
+          const event = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          sep = buffer.indexOf('\n\n');
+          for (const line of event.split('\n')) {
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+            try {
+              const json = JSON.parse(payload);
+              const delta = json.choices?.[0]?.delta?.content;
+              if (delta) { emitted += delta.length; yield delta; }
+            } catch { /* partial json */ }
+          }
+        }
+      }
+      if (emitted > 0) return;
+    } catch (err) {
+      console.error('Groq stream error (' + model + '):', err.message);
+      if (emitted > 0) return; // never splice a second model into a half-finished reply
+    }
+  }
+}
+
 function detectLanguage(text) {
   const hay = (text || '').toLowerCase();
   let best = 'en';
@@ -229,6 +310,27 @@ async function transcribeAudio(buffer, mimeType, lang) {
     }
   }
 
+  // Whisper fallback: Groq (free, robust) before paid OpenAI
+  if (hasGroq()) {
+    try {
+      const fd = new FormData();
+      const filename = AUDIO_FILENAME_BY_MIME[mime] || 'voice.webm';
+      fd.append('file', new Blob([buffer], { type: mime || 'audio/webm' }), filename);
+      fd.append('model', 'whisper-large-v3-turbo');
+      fd.append('language', WHISPER_LANG[lang] || 'en');
+      const res = await fetch(GROQ_BASE + '/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + process.env.GROQ_API_KEY },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error((data.error && data.error.message) || 'HTTP ' + res.status);
+      if (data.text) return data.text.trim();
+    } catch (err) {
+      console.error('[transcribe] Groq Whisper error:', err.message);
+    }
+  }
+
   // Whisper fallback
   if (process.env.OPENAI_API_KEY) {
     try {
@@ -306,6 +408,16 @@ async function generateAIReply(messages, schoolId) {
       return completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
     } catch (err) {
       console.error('OpenAI error:', err.message);
+    }
+  }
+
+  // Fallback: Groq (free, robust) — last resort so Kofi never goes silent
+  if (hasGroq()) {
+    try {
+      const reply = await groqChat(messages, { maxTokens: 1200 });
+      if (reply) return reply;
+    } catch (err) {
+      console.error('Groq fallback error:', err.message);
     }
   }
 
@@ -412,6 +524,15 @@ async function* streamAIReply(messages) {
       }
     } catch (err) {
       console.error('OpenAI stream error:', err.message);
+    }
+  }
+
+  // Fallback: Groq streaming (free, robust) — last resort so Kofi never goes silent
+  if (hasGroq()) {
+    try {
+      yield* groqStream(messages, 900);
+    } catch (err) {
+      console.error('Groq stream fallback error:', err.message);
     }
   }
 }
