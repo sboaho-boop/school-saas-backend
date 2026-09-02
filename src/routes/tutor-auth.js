@@ -2,6 +2,7 @@ const { Router } = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
+const { sendTutorWelcomeEmail } = require('../lib/email');
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'teacher-kofi-secret';
@@ -45,6 +46,10 @@ router.post('/register', async (req, res) => {
     });
 
     const token = signToken(user.id);
+    // Fire-and-forget welcome email — never blocks registration or fails it
+    sendTutorWelcomeEmail(user.email, user.name).catch((err) => {
+      console.error('Tutor welcome email error:', err.message);
+    });
     res.status(201).json({ user, token });
   } catch (err) {
     console.error('Tutor register error:', err.message);

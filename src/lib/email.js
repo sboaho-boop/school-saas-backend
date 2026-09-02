@@ -57,4 +57,32 @@ async function sendOtpEmail(to, name, otp, verificationToken) {
   `);
 }
 
-module.exports = { sendEmail, sendOtpEmail };
+async function sendTutorWelcomeEmail(to, name) {
+  const first = (name || '').trim().split(/\s+/)[0] || 'friend';
+  return sendEmail(to, 'Welcome to Teacher Kofi! Your account is ready', `
+    <div style="font-family:sans-serif;max-width:520px;margin:0 auto;">
+      <div style="background:linear-gradient(135deg,#7c3aed,#d946ef);border-radius:12px 12px 0 0;padding:28px 24px;text-align:center;">
+        <div style="color:#fff;font-size:28px;font-weight:bold;">Teacher Kofi</div>
+        <div style="color:#fcedff;font-size:14px;margin-top:4px;">Your AI learning companion</div>
+      </div>
+      <div style="border:1px solid #eee;border-top:none;border-radius:0 0 12px 12px;padding:24px;">
+        <p style="color:#333;font-size:15px;line-height:1.6;">Hi ${first}, congratulations on creating your Teacher Kofi account!</p>
+        <p style="color:#333;font-size:15px;line-height:1.6;">You now have your own personal AI tutor. Teacher Kofi can help you with:</p>
+        <ul style="color:#333;font-size:15px;line-height:1.8;">
+          <li>Mathematics, English, Science, ICT and Social Studies</li>
+          <li>Ghanaian languages: Twi, Ga, Ewe, Fante and Dagbani</li>
+          <li>Homework help, quizzes and learning games</li>
+          <li>Voice lessons and step-by-step teaching diagrams</li>
+        </ul>
+        <div style="text-align:center;margin:28px 0;">
+          <a href="https://eduplatformsoftware.com/tutor/dashboard" style="background:#7c3aed;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">Start Learning</a>
+        </div>
+        <p style="color:#333;font-size:15px;line-height:1.6;">When you're ready for unlimited messages and the full course library, check out the <a href="https://eduplatformsoftware.com/tutor/pricing" style="color:#7c3aed;font-weight:bold;">Pro plan</a>.</p>
+        <p style="color:#333;font-size:15px;line-height:1.6;">We're excited to learn with you!</p>
+        <p style="color:#888;font-size:13px;margin-top:24px;">— The Teacher Kofi Team</p>
+      </div>
+    </div>
+  `);
+}
+
+module.exports = { sendEmail, sendOtpEmail, sendTutorWelcomeEmail };
