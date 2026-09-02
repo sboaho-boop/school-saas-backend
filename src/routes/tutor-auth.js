@@ -47,10 +47,16 @@ router.post('/register', async (req, res) => {
 
     const token = signToken(user.id);
     // Fire-and-forget welcome email — never blocks registration or fails it
-    sendTutorWelcomeEmail(user.email, user.name).catch((err) => {
-      console.error('Tutor welcome email error:', err.message);
-    });
-    res.status(201).json({ user, token });
+    let welcomeEmail = null;
+    try {
+      const r = await sendTutorWelcomeEmail(user.email, user.name);
+      welcomeEmail = { sent: r.success === true, note: r.success ? '' : (r.reason || 'skipped') };
+      console.log('[welcome email]', JSON.stringify(welcomeEmail));
+    } catch (err) {
+      welcomeEmail = { sent: false, note: err.message };
+      console.error('[welcome email] error:', err.message);
+    }
+    res.status(201).json({ user, token, welcomeEmail });
   } catch (err) {
     console.error('Tutor register error:', err.message);
     res.status(500).json({ error: 'Registration failed' });
