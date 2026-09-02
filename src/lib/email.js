@@ -6,32 +6,46 @@ const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
 const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@eduplatformsoftware.com';
 
-let transporter = null;
+// One transporter per connection mode ('starttls' = configured port, 'ssl' = 465 fallback)
+const transporters = {};
 
-function getTransporter() {
+function getTransporter(mode) {
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return null;
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: SMTP_PORT === 465,
-      auth: { user: SMTP_USER, pass: SMTP_PASS },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-    });
-  }
-  return transporter;
+  if (transporters[mode]) return transporters[mode];
+  const useSsl = mode === 'ssl';
+  const port = useSsl ? 465 : SMTP_PORT;
+  transporters[mode] = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port,
+    secure: useSsl,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
+  });
+  return transporters[mode];
+}
+
+function isConnectionError(msg) {
+  return /connect|timeout|ECONN|ETIMEDOUT|ENOTFOUND|socket|tls|greeting/i.test(msg || '');
 }
 
 async function sendEmail(to, subject, html) {
-  const t = getTransporter();
-  if (!t) return { skipped: true, reason: 'SMTP not configured' };
-  try {
-    const info = await t.sendMail({ from: FROM_EMAIL, to, subject, html });
-    return { success: true, messageId: info.messageId };
-  } catch (err) {
-    return { skipped: true, reason: err.message };
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) return { skipped: true, reason: 'SMTP not configured' };
+  const modes = ['starttls', 'ssl'];
+  let lastErr = null;
+  for (let i = 0; i < modes.length; i++) {
+    const mode = modes[i];
+    try {
+      const info = await getTransporter(mode).sendMail({ from: FROM_EMAIL, to, subject, html });
+      return { success: true, messageId: info.messageId, mode };
+    } catch (err) {
+      lastErr = err.message;
+      // Connection-level failures: try the other mode. Auth/content errors: don't.
+      if (i < modes.length - 1 && isConnectionError(lastErr)) continue;
+      break;
+    }
   }
+  return { skipped: true, reason: lastErr };
 }
 
 function emailConfigured() {
