@@ -81,6 +81,104 @@ router.get('/children/:id', authenticateParent, async (req, res) => {
   res.json(student);
 });
 
+const ownedStudent = async (req) => {
+  return prisma.student.findFirst({
+    where: { id: req.params.id, parentEmail: req.parentEmail, schoolId: req.schoolId },
+    select: { id: true, classId: true, firstName: true, lastName: true, className: true },
+  });
+};
+
+router.get('/children/:id/exams', authenticateParent, async (req, res) => {
+  try {
+    const student = await ownedStudent(req);
+    if (!student) return res.status(403).json({ error: 'Not your child' });
+    if (!student.classId) return res.json([]);
+    const exams = await prisma.exam.findMany({
+      where: { schoolId: req.schoolId, classId: student.classId },
+      orderBy: { dueDate: 'asc' },
+      select: { id: true, title: true, subjectId: true, duration: true, totalPoints: true, dueDate: true },
+    });
+    const subjectIds = [...new Set(exams.map((e) => e.subjectId))];
+    const subjects = subjectIds.length
+      ? await prisma.subject.findMany({ where: { id: { in: subjectIds }, schoolId: req.schoolId }, select: { id: true, name: true } })
+      : [];
+    const subjectMap = {};
+    subjects.forEach((s) => { subjectMap[s.id] = s.name; });
+    res.json(exams.map((e) => ({
+      id: e.id,
+      title: e.title,
+      subjectName: subjectMap[e.subjectId] || 'General',
+      duration: e.duration,
+      totalPoints: e.totalPoints,
+      dueDate: e.dueDate,
+    })));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/children/:id/report-card', authenticateParent, async (req, res) => {
+  try {
+    const student = await ownedStudent(req);
+    if (!student) return res.status(403).json({ error: 'Not your child' });
+
+    const term = req.query.termId
+      ? await prisma.term.findFirst({ where: { id: String(req.query.termId), schoolId: req.schoolId } })
+      : await prisma.term.findFirst({ where: { schoolId: req.schoolId, isActive: true } })
+        || await prisma.term.findFirst({ where: { schoolId: req.schoolId }, orderBy: { startDate: 'desc' } });
+
+    if (!term) {
+      return res.json({ student: { firstName: student.firstName, lastName: student.lastName, className: student.className }, term: null, subjects: [], totalScore: 0, totalSubjects: 0, average: 0, overallGrade: '', noTerm: true });
+    }
+
+    const grades = await prisma.grade.findMany({
+      where: { studentId: student.id, termId: term.id, schoolId: req.schoolId },
+      orderBy: { score: 'desc' },
+    });
+
+    const subjects = student.classId
+      ? await prisma.subject.findMany({ where: { classId: student.classId, schoolId: req.schoolId }, orderBy: { name: 'asc' } })
+      : [];
+
+    const subjectGrades = {};
+    grades.forEach((g) => { subjectGrades[g.subjectId] = g; });
+
+    const subjectScores = subjects.map((sub) => {
+      const g = subjectGrades[sub.id];
+      let components = {};
+      if (g && g.components) {
+        try { components = JSON.parse(typeof g.components === 'string' ? g.components : '{}'); } catch { components = {}; }
+      }
+      return {
+        subjectId: sub.id,
+        subjectName: sub.name,
+        subjectCode: sub.code,
+        score: g ? g.score : 0,
+        grade: g ? g.grade : '',
+        components,
+        remarks: g ? g.remarks : '',
+      };
+    });
+
+    const totalScore = subjectScores.reduce((sum, s) => sum + s.score, 0);
+    const totalSubjects = subjectScores.length;
+    const average = totalSubjects > 0 ? Math.round((totalScore / totalSubjects) * 100) / 100 : 0;
+    const overallGrade = totalSubjects > 0 ? ['A+', 'A', 'B+', 'B', 'C+', 'C', 'D+', 'D', 'E', 'F'][Math.max(0, Math.min(9, Math.floor((100 - average) / 10)))] : '';
+
+    res.json({
+      student: { firstName: student.firstName, lastName: student.lastName, className: student.className },
+      term: { name: term.name, academicYear: term.academicYear },
+      subjects: subjectScores,
+      totalScore,
+      totalSubjects,
+      average,
+      overallGrade,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.post('/wallet/initiate-topup', authenticateParent, async (req, res) => {
   try {
     const { studentId, amount, phone, channel } = req.body;
