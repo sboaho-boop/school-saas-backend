@@ -95,4 +95,157 @@ router.put('/terms/:id/activate', requireRole('headteacher', 'admin'), async (re
   }
 });
 
+function generateMeetingCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = 'PTA-';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+async function uniqueMeetingCode() {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const code = generateMeetingCode();
+    const existing = await prisma.classMeeting.findUnique({ where: { meetingCode: code } });
+    if (!existing) return code;
+  }
+  return `PTA-${Date.now().toString(36).toUpperCase()}`;
+}
+
+router.get('/meetings', async (req, res) => {
+  try {
+    const where = { schoolId: req.schoolId };
+    if (req.query.classId) where.classId = String(req.query.classId);
+    if (req.query.status) where.status = String(req.query.status);
+    const meetings = await prisma.classMeeting.findMany({
+      where,
+      include: { class: { select: { id: true, name: true } } },
+      orderBy: [{ meetingDate: 'desc' }, { startTime: 'desc' }],
+    });
+    res.json(meetings);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/meetings', requireRole('headteacher', 'admin', 'teaching'), async (req, res) => {
+  try {
+    const { classId, title, agenda, meetingDate, startTime, endTime } = req.body;
+    if (!classId || !title || !meetingDate || !startTime) {
+      return res.status(400).json({ error: 'classId, title, meetingDate and startTime required' });
+    }
+    const cls = await prisma.academicClass.findFirst({ where: { id: classId, schoolId: req.schoolId } });
+    if (!cls) return res.status(404).json({ error: 'Class not found' });
+
+    const meetingCode = await uniqueMeetingCode();
+    const meeting = await prisma.classMeeting.create({
+      data: {
+        schoolId: req.schoolId,
+        classId,
+        createdById: req.user.id,
+        title,
+        agenda: agenda || '',
+        meetingDate,
+        startTime,
+        endTime: endTime || '',
+        status: 'scheduled',
+        meetingCode,
+      },
+    });
+
+    const fullSchedule = `${startTime}${endTime ? ' - ' + endTime : ''}`;
+
+    await prisma.calendarEvent.create({
+      data: {
+        schoolId: req.schoolId,
+        title: `PTA Meeting: ${title} (${cls.name})`,
+        description: `Class ${cls.name} PTA meeting. Join code: ${meetingCode}. ${agenda || ''}`.trim(),
+        date: meetingDate,
+        endDate: meetingDate,
+        time: startTime,
+        endTime: endTime || null,
+        type: 'meeting',
+        color: '#8b5cf6',
+        allDay: false,
+        createdBy: req.user.id,
+      },
+    });
+
+    const ann = await prisma.announcement.create({
+      data: {
+        schoolId: req.schoolId,
+        title: `Upcoming PTA Meeting - ${cls.name}`,
+        body: `PTA meeting for ${cls.name} on ${meetingDate} at ${fullSchedule}.\nTitle: ${title}\nJoin code: ${meetingCode}\n${agenda ? 'Agenda: ' + agenda : ''}`.trim(),
+        authorId: req.user.id,
+        priority: 'normal',
+      },
+      include: { author: { select: { id: true, name: true } } },
+    });
+
+    try {
+      const staffUsers = await prisma.user.findMany({
+        where: { schoolId: req.schoolId, role: { in: ['admin', 'headteacher', 'teaching'] } },
+        select: { id: true },
+      });
+      for (const u of staffUsers) {
+        await prisma.notification.create({
+          data: {
+            schoolId: req.schoolId,
+            userId: u.id,
+            type: 'class-meeting',
+            title: `PTA Meeting - ${cls.name}`,
+            message: `${title} on ${meetingDate} at ${startTime}. Join code: ${meetingCode}`,
+          },
+        });
+      }
+    } catch (_e) {
+      // Notification fan-out is best-effort; never fail meeting creation because of it.
+    }
+
+    await logAudit(req, 'create', 'class-meeting', meeting.id, { title: meeting.title, className: cls.name });
+    res.status(201).json({ ...meeting, announcement: ann });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/meetings/:id', async (req, res) => {
+  try {
+    const meeting = await prisma.classMeeting.findFirst({
+      where: { id: req.params.id, schoolId: req.schoolId },
+      include: { class: { select: { id: true, name: true } } },
+    });
+    if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+    res.json(meeting);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.put('/meetings/:id', requireRole('headteacher', 'admin', 'teaching'), async (req, res) => {
+  try {
+    const existing = await prisma.classMeeting.findFirst({ where: { id: req.params.id, schoolId: req.schoolId } });
+    if (!existing) return res.status(404).json({ error: 'Meeting not found' });
+    const { title, agenda, meetingDate, startTime, endTime, status } = req.body;
+    const meeting = await prisma.classMeeting.update({
+      where: { id: req.params.id },
+      data: { title, agenda, meetingDate, startTime, endTime, status },
+    });
+    res.json(meeting);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/meetings/:id', requireRole('headteacher', 'admin', 'teaching'), async (req, res) => {
+  try {
+    const existing = await prisma.classMeeting.findFirst({ where: { id: req.params.id, schoolId: req.schoolId } });
+    if (!existing) return res.status(404).json({ error: 'Meeting not found' });
+    await prisma.classMeeting.delete({ where: { id: req.params.id } });
+    await logAudit(req, 'delete', 'class-meeting', req.params.id, { title: existing.title });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 module.exports = router;

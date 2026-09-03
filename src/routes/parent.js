@@ -179,6 +179,33 @@ router.get('/children/:id/report-card', authenticateParent, async (req, res) => 
   }
 });
 
+router.get('/children/:id/meetings', authenticateParent, async (req, res) => {
+  try {
+    const student = await ownedStudent(req);
+    if (!student) return res.status(403).json({ error: 'Not your child' });
+    if (!student.classId) return res.json([]);
+    const now = new Date();
+    const meetings = await prisma.classMeeting.findMany({
+      where: { schoolId: req.schoolId, classId: student.classId },
+      orderBy: [{ meetingDate: 'asc' }, { startTime: 'asc' }],
+      include: { class: { select: { id: true, name: true } } },
+    });
+    const enriched = meetings.map((m) => {
+      let isLive = false;
+      if (m.status === 'live') isLive = true;
+      if (m.status === 'scheduled' && m.endTime) {
+        const start = new Date(`${m.meetingDate}T${m.startTime}`);
+        const end = new Date(`${m.meetingDate}T${m.endTime}`);
+        isLive = now >= start && now <= end;
+      }
+      return { ...m, isUpcoming: m.meetingDate >= now.toISOString().slice(0, 10) || isLive, isLive };
+    });
+    res.json(enriched);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 router.post('/wallet/initiate-topup', authenticateParent, async (req, res) => {
   try {
     const { studentId, amount, phone, channel } = req.body;

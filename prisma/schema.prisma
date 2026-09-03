@@ -101,6 +101,7 @@ model School {
   alumni          Alumni[]
   driverTrips     DriverTrip[]
   calendarEvents  CalendarEvent[]
+  classMeetings   ClassMeeting[]
   feedbacks       Feedback[]
   aiConversations AIConversation[]
   directDebitPreapprovals DirectDebitPreapproval[]
@@ -446,16 +447,35 @@ model ScheduledMessage {
 
 
 model AcademicClass {
-  id       String @id @default(cuid())
-  schoolId String
-  name     String
-  section  String
-  students Int    @default(0)
-  teacher  String @default("Unassigned")
+    id       String @id @default(cuid())
+    schoolId String
+    name     String
+    section  String
+    students Int    @default(0)
+    teacher  String @default("Unassigned")
+  
+    school      School         @relation(fields: [schoolId], references: [id])
+    subjects    Subject[]
+    classMeetings ClassMeeting[]
+  }
 
-  school   School    @relation(fields: [schoolId], references: [id])
-  subjects Subject[]
-}
+  model ClassMeeting {
+    id          String   @id @default(cuid())
+    schoolId    String
+    classId     String
+    createdById String
+    title       String
+    agenda      String   @default("")
+    meetingDate String
+    startTime   String
+    endTime     String
+    status      String   @default("scheduled") // scheduled | live | ended | cancelled
+    meetingCode String   @unique
+    createdAt   DateTime @default(now())
+
+    school  School        @relation(fields: [schoolId], references: [id])
+    class   AcademicClass @relation(fields: [classId], references: [id])
+  }
 
 model Subject {
   id       String @id @default(cuid())
