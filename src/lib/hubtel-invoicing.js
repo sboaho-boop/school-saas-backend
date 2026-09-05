@@ -1,6 +1,6 @@
 const https = require('https');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:4000';
+const BASE_URL = process.env.BASE_URL || 'https://school-saas-backend-fnqi.onrender.com';
 
 function createSimpleInvoice({
   invoiceNumber, dueDate, createdBy, customerName, customerPhoneNumber,

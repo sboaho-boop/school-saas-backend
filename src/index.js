@@ -120,6 +120,7 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Dat
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/import', importRoutes);
+app.use('/api/wallet', walletWebhookRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/parent', parentRoutes);
 app.use('/api/students', studentRoutes);
@@ -141,7 +142,6 @@ app.use('/api/assignments', assignmentRoutes);
 app.use('/api/submissions', submissionRoutes);
 app.use('/api/timetable', timetableRoutes);
 app.use('/api/upload', uploadRoutes);
-app.use('/api/wallet', walletWebhookRoutes);
 app.use('/api/super', superRoutes);
 app.use('/api/exams', examRoutes);
 app.use('/api/incidents', incidentRoutes);

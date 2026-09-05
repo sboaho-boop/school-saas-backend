@@ -4,8 +4,8 @@ const HUBTEL_CLIENT_ID = process.env.HUBTEL_CLIENT_ID || '';
 const HUBTEL_CLIENT_SECRET = process.env.HUBTEL_CLIENT_SECRET || '';
 const HUBTEL_MERCHANT_ACCOUNT = process.env.HUBTEL_MERCHANT_ACCOUNT || '';
 const HUBTEL_CHECKOUT_URL = process.env.HUBTEL_CHECKOUT_URL || 'https://payproxyapi.hubtel.com/items/initiate';
-const BASE_URL = process.env.BASE_URL || 'http://localhost:4000';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'https://school-saas-backend-fnqi.onrender.com';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://eduplatformsoftware.com';
 
 function createCheckout({ amount, title, description, clientReference, payeeName, payeeEmail, payeeMobileNumber, callbackUrl, returnUrl, cancellationUrl, schoolCredentials }) {
   return new Promise((resolve, reject) => {

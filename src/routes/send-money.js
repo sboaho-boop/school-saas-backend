@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { sendMoney, checkSendMoneyStatus } = require('../lib/hubtel-send-money');
+const { publicBaseUrl } = require('../lib/urls');
 
 const router = Router();
 
@@ -34,7 +35,7 @@ router.post('/send', authenticate, requireRole('headteacher', 'admin', 'accounta
       amount,
       description: description || `Send money to ${msisdn}`,
       clientReference,
-      callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/send-money/hubtel-webhook`,
+      callbackUrl: `${publicBaseUrl(req)}/api/send-money/hubtel-webhook`,
       schoolCredentials: school,
     });
 

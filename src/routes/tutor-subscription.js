@@ -9,10 +9,10 @@ const {
   preapprovalCancel,
 } = require('../lib/hubtel-direct-debit');
 const { createCheckout } = require('../lib/hubtel-payment');
+const { publicBaseUrl, publicFrontendUrl } = require('../lib/urls');
 
 const router = Router();
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:4000';
 const CHANNELS = ['mtn-gh', 'vodafone-gh'];
 
 const isApproved = (status) => /APPROVED|ACTIVE|SUCCESS|AUTHORIZED/i.test(status || '');
@@ -81,7 +81,7 @@ router.post('/init', authenticateTutor, async (req, res) => {
     const result = await preapprovalInitiate({
       phone: msisdn,
       channel,
-      callbackUrl: `${BASE_URL}/api/tutor/subscription/webhook/preapproval`,
+      callbackUrl: `${publicBaseUrl(req)}/api/tutor/subscription/webhook/preapproval`,
       clientReferenceId,
       schoolCredentials: getHubtelCredentials(),
     });
@@ -141,9 +141,9 @@ router.post('/checkout/init', authenticateTutor, async (req, res) => {
       clientReference: reference,
       payeeName: user.name || '',
       payeeEmail: user.email || '',
-      callbackUrl: `${BASE_URL}/api/tutor/subscription/webhook/checkout`,
-      returnUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/tutor/dashboard?billing=success`,
-      cancellationUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/tutor/dashboard?billing=cancelled`,
+      callbackUrl: `${publicBaseUrl(req)}/api/tutor/subscription/webhook/checkout`,
+      returnUrl: `${publicFrontendUrl()}/tutor/dashboard?billing=success`,
+      cancellationUrl: `${publicFrontendUrl()}/tutor/dashboard?billing=cancelled`,
       schoolCredentials: getHubtelCredentials(),
     });
 

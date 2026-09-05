@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { sendToBank, BANK_CODES } = require('../lib/hubtel-send-to-bank');
+const { publicBaseUrl } = require('../lib/urls');
 
 const router = Router();
 
@@ -38,7 +39,7 @@ router.post('/withdraw', authenticate, async (req, res) => {
       recipientPhoneNumber: phone || '',
       description: `Wallet withdrawal for ${student.firstName} ${student.lastName}`,
       clientReference: reference,
-      callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/send-to-bank/hubtel-webhook`,
+      callbackUrl: `${publicBaseUrl(req)}/api/send-to-bank/hubtel-webhook`,
       schoolCredentials: school,
     });
 
@@ -92,7 +93,7 @@ router.post('/pay-staff', authenticate, requireRole('headteacher', 'admin', 'acc
       bankName: staff.bankName || '',
       description: description || `Salary payment for ${staff.name}`,
       clientReference: reference,
-      callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/send-to-bank/hubtel-webhook`,
+      callbackUrl: `${publicBaseUrl(req)}/api/send-to-bank/hubtel-webhook`,
       schoolCredentials: school,
     });
 
@@ -131,7 +132,7 @@ router.post('/bulk-pay-staff', authenticate, requireRole('headteacher', 'admin')
           bankName: staff.bankName || '',
           description: description || `Salary payment for ${staff.name}`,
           clientReference: reference,
-          callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/send-to-bank/hubtel-webhook`,
+          callbackUrl: `${publicBaseUrl(req)}/api/send-to-bank/hubtel-webhook`,
           schoolCredentials: school,
         });
         results.push({ staffId: staff.id, name: staff.name, success: result.ResponseCode === '0001', reference, transactionId: result.Data?.TransactionId });

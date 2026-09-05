@@ -5,6 +5,7 @@ const prisma = require('../lib/prisma');
 const { signToken, verifyToken } = require('../lib/jwt');
 const { createCheckout } = require('../lib/hubtel-payment');
 const { directReceiveMoney } = require('../lib/hubtel-direct-receive');
+const { publicBaseUrl } = require('../lib/urls');
 
 const router = Router();
 
@@ -229,7 +230,7 @@ router.post('/wallet/initiate-topup', authenticateParent, async (req, res) => {
       amount: amountFloat,
       description: `Top up wallet for ${student.firstName} ${student.lastName}`,
       clientReference: reference,
-      callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/wallet/hubtel-webhook`,
+      callbackUrl: `${publicBaseUrl(req)}/api/wallet/hubtel-webhook`,
       schoolCredentials: school,
     });
     if (result.ResponseCode !== '0001') {

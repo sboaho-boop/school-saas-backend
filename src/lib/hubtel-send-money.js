@@ -1,6 +1,6 @@
 const https = require('https');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:4000';
+const BASE_URL = process.env.BASE_URL || 'https://school-saas-backend-fnqi.onrender.com';
 
 function sendMoney({ recipientName, recipientMsisdn, customerEmail, channel, amount, description, clientReference, callbackUrl, schoolCredentials }) {
   return new Promise((resolve, reject) => {

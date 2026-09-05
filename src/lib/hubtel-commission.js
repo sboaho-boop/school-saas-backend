@@ -1,6 +1,6 @@
 const https = require('https');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:4000';
+const BASE_URL = process.env.BASE_URL || 'https://school-saas-backend-fnqi.onrender.com';
 
 const SERVICE_IDS = {
   MTN_AIRTIME: 'fdd76c884e614b1c8f669a3207b09a98',

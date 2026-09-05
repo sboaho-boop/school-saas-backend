@@ -5,6 +5,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { sendSubscriptionAlert } = require('../lib/sms');
 const { createCheckout } = require('../lib/hubtel-payment');
 const { directReceiveMoney } = require('../lib/hubtel-direct-receive');
+const { publicBaseUrl } = require('../lib/urls');
 
 const PLANS = {
   free: { name: 'Starter', studentLimit: 100, staffLimit: 10, priceId: null, amount: 0 },
@@ -70,7 +71,7 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
         amount,
         description: `${PLANS[plan].name} subscription for EDUPLATFORM`,
         clientReference: `SUB-${reference.slice(0, 24)}`,
-        callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/billing/hubtel-webhook`,
+        callbackUrl: `${publicBaseUrl(req)}/api/billing/hubtel-webhook`,
         schoolCredentials: school,
       });
       if (result.ResponseCode !== '0001') {

@@ -2,6 +2,7 @@ const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { createInvoice, verifyInvoice, cancelInvoice, INTERVALS } = require('../lib/hubtel-recurring-invoice');
+const { publicBaseUrl } = require('../lib/urls');
 
 const router = Router();
 
@@ -51,7 +52,7 @@ router.post('/create', authenticate, async (req, res) => {
       recurringAmount: amount,
       totalAmount: amount,
       initialAmount: amount,
-      callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/recurring-invoice/hubtel-webhook`,
+      callbackUrl: `${publicBaseUrl(req)}/api/recurring-invoice/hubtel-webhook`,
       schoolCredentials: school,
     });
 

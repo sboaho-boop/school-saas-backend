@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const prisma = require('../lib/prisma');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { preapprovalInitiate, preapprovalVerifyOtp, preapprovalStatus, preapprovalCancel, preapprovalReactivate, directDebitCharge, DIRECT_DEBIT_CHANNELS } = require('../lib/hubtel-direct-debit');
+const { publicBaseUrl } = require('../lib/urls');
 
 const router = Router();
 
@@ -25,7 +26,7 @@ router.post('/preapproval/initiate', authenticate, async (req, res) => {
     const result = await preapprovalInitiate({
       phone: msisdn,
       channel,
-      callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/direct-debit/preapproval-webhook`,
+      callbackUrl: `${publicBaseUrl(req)}/api/direct-debit/preapproval-webhook`,
       clientReferenceId,
       schoolCredentials: school,
     });
@@ -168,7 +169,7 @@ router.post('/preapproval/reactivate', authenticate, async (req, res) => {
 
     const result = await preapprovalReactivate({
       phone: msisdn,
-      callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/direct-debit/preapproval-webhook`,
+      callbackUrl: `${publicBaseUrl(req)}/api/direct-debit/preapproval-webhook`,
       schoolCredentials: school,
     });
 
@@ -232,7 +233,7 @@ router.post('/charge', authenticate, async (req, res) => {
       amount,
       description: description || `Direct debit for ${studentName}`,
       clientReference: reference,
-      callbackUrl: `${process.env.BASE_URL || 'http://localhost:4000'}/api/wallet/hubtel-webhook`,
+      callbackUrl: `${publicBaseUrl(req)}/api/wallet/hubtel-webhook`,
       schoolCredentials: school,
     });
 

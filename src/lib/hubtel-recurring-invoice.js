@@ -1,6 +1,6 @@
 const https = require('https');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:4000';
+const BASE_URL = process.env.BASE_URL || 'https://school-saas-backend-fnqi.onrender.com';
 
 const RECURRING_CHANNELS = {
   'mtn-gh': 'mtn_gh_rec',
