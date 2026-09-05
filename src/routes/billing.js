@@ -85,9 +85,9 @@ router.post('/upgrade', authenticate, requireRole('headteacher', 'admin'), async
       return res.json({ message: 'Payment prompt sent. Approve to complete.', reference: `SUB-${reference.slice(0, 24)}` });
     }
 
-    console.log(`[billing/upgrade] creating Hubtel checkout, amount=${PLANS[plan].amount}`);
+    console.log(`[billing/upgrade] creating Hubtel checkout, amount=${PLANS[plan].amount / 100}`);
     const checkout = await createCheckout({
-      amount: PLANS[plan].amount,
+      amount: PLANS[plan].amount / 100,
       title: `EDUPLATFORM SOFTWARE SERVICES ${PLANS[plan].name} Plan`,
       description: `${PLANS[plan].name} subscription for ${req.user.name}`,
       clientReference: reference,
