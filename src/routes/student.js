@@ -5,6 +5,7 @@ const { signToken, verifyToken } = require('../lib/jwt');
 const { authenticate } = require('../middleware/auth');
 const { generateAIReply, checkAILimit, detectLanguage, buildKofiSystem, transcribeAudio } = require('../lib/ai');
 const { getGradeConfig } = require('../lib/gradebook-config');
+const { gradeAnswer, buildPaper, AUTO_GRADED } = require('../lib/exam-engine');
 
 const router = Router();
 
@@ -285,6 +286,175 @@ router.get('/timetable', authenticateStudent, async (req, res) => {
       subjectCode: s.subjectId && subjectMap[s.subjectId] ? subjectMap[s.subjectId].code : '',
       staffId: s.staffId,
     })));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/exam/list', authenticateStudent, async (req, res) => {
+  try {
+    const student = await prisma.student.findUnique({ where: { id: req.studentId }, select: { classId: true, firstName: true, lastName: true } });
+    if (!student) return res.status(404).json({ error: 'Student not found' });
+    const exams = await prisma.exam.findMany({
+      where: { schoolId: req.schoolId, classId: student.classId },
+      orderBy: { dueDate: 'asc' },
+      include: { questions: { select: { id: true, points: true, type: true } }, submissions: { where: { studentId: req.studentId }, orderBy: { startedAt: 'desc' } } },
+    });
+    const results = exams.map((e) => {
+      const latest = e.submissions[0] || null;
+      const totalPoints = e.questions.reduce((s, q) => s + q.points, 0);
+      const available = !latest || (e.allowRetake && latest.status === 'submitted') || latest.status === 'graded';
+      return {
+        id: e.id,
+        title: e.title,
+        description: e.description,
+        duration: e.duration,
+        dueDate: e.dueDate,
+        totalPoints: e.totalPoints || totalPoints,
+        passScore: e.passScore,
+        questionCount: e.questions.length,
+        shuffleQuestions: e.shuffleQuestions,
+        allowRetake: e.allowRetake,
+        status: latest ? latest.status : 'not_started',
+        score: latest ? latest.score : null,
+        grade: latest ? latest.grade : '',
+        startedAt: latest ? latest.startedAt : null,
+        submittedAt: latest ? latest.submittedAt : null,
+      };
+    });
+    res.json({ student: `${student.firstName} ${student.lastName}`, exams: results });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// GET /exam/:id — get the paper (without correct answers) for taking; create/resume an attempt
+router.post('/exam/:id/start', authenticateStudent, async (req, res) => {
+  try {
+    const exam = await prisma.exam.findFirst({ where: { id: req.params.id, schoolId: req.schoolId }, include: { questions: true } });
+    if (!exam) return res.status(404).json({ error: 'Exam not found' });
+    const student = await prisma.student.findUnique({ where: { id: req.studentId }, select: { classId: true } });
+    if (!student || student.classId !== exam.classId) return res.status(403).json({ error: 'This exam is not for your class' });
+
+    const existing = await prisma.examSubmission.findMany({ where: { examId: exam.id, studentId: req.studentId }, orderBy: { startedAt: 'desc' } });
+    const latest = existing[0];
+    if (latest && (latest.status === 'submitted' || latest.status === 'graded') && !exam.allowRetake) {
+      return res.status(403).json({ error: 'Already submitted. Retakes are not allowed for this exam.' });
+    }
+
+    // Resume an in-progress attempt, else create one
+    let active = latest && latest.status === 'started' ? latest : null;
+    if (!active) active = await prisma.examSubmission.create({ data: { examId: exam.id, studentId: req.studentId, schoolId: req.schoolId, status: 'started', answers: '{}' } });
+
+    const paper = buildPaper(exam.questions, exam.shuffleQuestions, true);
+    res.json({ examId: exam.id, title: exam.title, description: exam.description, duration: exam.duration, totalPoints: exam.totalPoints, passScore: exam.passScore, shuffleQuestions: exam.shuffleQuestions, questions: paper, attemptId: active.id, startedAt: active.startedAt });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /exam/:id/save — persist answers during the attempt
+router.post('/exam/:id/save', authenticateStudent, async (req, res) => {
+  try {
+    const { answers } = req.body;
+    const exam = await prisma.exam.findFirst({ where: { id: req.params.id, schoolId: req.schoolId } });
+    if (!exam) return res.status(404).json({ error: 'Exam not found' });
+    const active = await prisma.examSubmission.findFirst({ where: { examId: exam.id, studentId: req.studentId, schoolId: req.schoolId, status: 'started' } });
+    if (!active) return res.status(404).json({ error: 'No active attempt. Start the exam first.' });
+    const current = JSON.parse(active.answers || '{}');
+    const next = { ...current, ...answers };
+    await prisma.examSubmission.update({ where: { id: active.id }, data: { answers: JSON.stringify(next) } });
+    res.json({ ok: true, savedAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// POST /exam/:id/submit — final submission; auto-grade mcq/truefalse/number
+router.post('/exam/:id/submit', authenticateStudent, async (req, res) => {
+  try {
+    const { answers } = req.body;
+    const exam = await prisma.exam.findFirst({ where: { id: req.params.id, schoolId: req.schoolId }, include: { questions: true } });
+    if (!exam) return res.status(404).json({ error: 'Exam not found' });
+    const active = await prisma.examSubmission.findFirst({ where: { examId: exam.id, studentId: req.studentId, schoolId: req.schoolId, status: 'started' } });
+    if (!active) return res.status(404).json({ error: 'No active attempt. Start the exam first.' });
+
+    const parsed = JSON.parse(answers || active.answers || '{}');
+    const auto = { score: 0, correct: 0 };
+    for (const q of exam.questions) {
+      if (!AUTO_GRADED.includes(q.type)) continue;
+      const r = gradeAnswer(q, parsed[q.id]);
+      if (r.correct) { auto.score += r.points; auto.correct++; }
+    }
+    const totalScore = exam.questions.reduce((s, q) => s + q.points, 0);
+    const pct = totalScore > 0 ? (auto.score / totalScore) * 100 : 0;
+    const grade = pct >= 80 ? 'A' : pct >= 70 ? 'B' : pct >= 60 ? 'C' : pct >= 50 ? 'D' : pct >= 40 ? 'E' : 'F';
+    const hasTheory = exam.questions.some((q) => !AUTO_GRADED.includes(q.type));
+
+    const updated = await prisma.examSubmission.update({
+      where: { id: active.id },
+      data: {
+        answers: JSON.stringify(parsed),
+        score: auto.score,
+        totalScore,
+        grade: hasTheory ? '' : grade,
+        graded: !hasTheory,
+        status: hasTheory ? 'submitted' : 'graded',
+        submittedAt: new Date(),
+        endedAt: new Date(),
+      },
+    });
+    res.json({ id: updated.id, score: auto.score, totalScore, grade: hasTheory ? '(pending)' : grade, correct: auto.correct, total: exam.questions.length, pendingTheory: hasTheory });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// GET /exam/:id/result — student's latest attempt detail
+router.get('/exam/:id/result', authenticateStudent, async (req, res) => {
+  try {
+    const exam = await prisma.exam.findFirst({ where: { id: req.params.id, schoolId: req.schoolId }, include: { questions: { orderBy: { order: 'asc' } } } });
+    if (!exam) return res.status(404).json({ error: 'Exam not found' });
+    const sub = await prisma.examSubmission.findFirst({ where: { examId: exam.id, studentId: req.studentId, schoolId: req.schoolId }, orderBy: { startedAt: 'desc' } });
+    if (!sub || sub.status === 'started') return res.status(404).json({ error: 'No submission found' });
+
+    const answers = JSON.parse(sub.answers || '{}');
+    const graded = JSON.parse(sub.gradedAnswers || '{}');
+    const questions = exam.questions.map((q) => {
+      const isAuto = AUTO_GRADED.includes(q.type);
+      const resObj = isAuto ? gradeAnswer(q, answers[q.id]) : null;
+      let answer = answers[q.id] !== undefined ? answers[q.id] : '';
+      let correct = false;
+      let points = 0;
+      if (isAuto) { correct = resObj.correct; points = resObj.correct ? q.points : 0; }
+      else { points = graded[q.id] ? (parseFloat(graded[q.id].points) || 0) : 0; correct = points > 0; }
+      return {
+        id: q.id,
+        type: q.type,
+        order: q.order,
+        questionText: q.questionText,
+        options: (() => { try { return JSON.parse(q.options || '[]'); } catch { return []; } })(),
+        correctAnswer: q.correctAnswer,
+        points: q.points,
+        answer,
+        correct,
+        earned: points,
+        teacherFeedback: graded[q.id] ? graded[q.id].feedback || '' : '',
+      };
+    });
+
+    res.json({
+      examId: exam.id,
+      title: exam.title,
+      score: sub.score,
+      totalScore: sub.totalScore,
+      grade: sub.grade || '',
+      graded: sub.graded,
+      status: sub.status,
+      questions,
+      submittedAt: sub.submittedAt,
+      endedAt: sub.endedAt,
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

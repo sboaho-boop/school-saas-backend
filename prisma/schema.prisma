@@ -732,6 +732,8 @@ model Exam {
   passScore   Float    @default(0)
   dueDate     String
   createdBy   String
+  shuffleQuestions Boolean @default(false)
+  allowRetake      Boolean @default(false)
   createdAt   DateTime @default(now())
 
   school      School           @relation(fields: [schoolId], references: [id])
@@ -748,6 +750,8 @@ model Question {
   options       String  @default("[]")
   correctAnswer String  @default("")
   points        Float   @default(1)
+  order         Int     @default(0)
+  shuffleGroup  Int     @default(1)
 
   school School @relation(fields: [schoolId], references: [id])
   exam   Exam   @relation(fields: [examId], references: [id])
@@ -758,18 +762,22 @@ model ExamSubmission {
   examId      String
   studentId   String
   schoolId    String
+  status      String   @default("started") // started | submitted | graded
   answers     String   @default("{}")
+  gradedAnswers String @default("{}")
   score       Float?
+  totalScore  Float    @default(0)
   grade       String   @default("")
   graded      Boolean  @default(false)
+  gradedBy    String?
   feedback    String   @default("")
-  submittedAt DateTime @default(now())
+  startedAt   DateTime @default(now())
+  submittedAt DateTime?
+  endedAt     DateTime?
 
   school  School  @relation(fields: [schoolId], references: [id])
   exam    Exam    @relation(fields: [examId], references: [id])
   student Student @relation(fields: [studentId], references: [id])
-
-  @@unique([examId, studentId])
 }
 
 model Incident {
