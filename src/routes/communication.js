@@ -95,10 +95,13 @@ router.get('/announcements', async (req, res) => {
     const offset = parseInt(req.query.offset) || 0;
     const search = req.query.search || '';
     const where = { schoolId: req.schoolId };
+    if (req.query.classId) where.classId = req.query.classId;
     if (search) {
-      where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { body: { contains: search, mode: 'insensitive' } },
+      where.AND = [
+        { OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { body: { contains: search, mode: 'insensitive' } },
+        ] },
       ];
     }
     const [announcements, total] = await Promise.all([
@@ -117,10 +120,20 @@ router.get('/announcements', async (req, res) => {
   }
 });
 
-router.post('/announcements', requireRole('headteacher', 'admin'), async (req, res) => {
+router.post('/announcements', async (req, res) => {
   try {
-    const { title, body, priority, audience, audienceFilter } = req.body;
+    const { title, body, priority, classId } = req.body;
     if (!title || !body) return res.status(400).json({ error: 'title and body are required' });
+    if (req.user.role === 'teaching' && !classId) return res.status(403).json({ error: 'Teachers must post announcements to a class' });
+    if (req.user.role !== 'headteacher' && req.user.role !== 'admin' && req.user.role !== 'teaching') {
+      return res.status(403).json({ error: 'Only admins and teachers can make announcements' });
+    }
+    if (classId && req.staff && req.staff.staffType === 'teaching') {
+      const classes = parseClasses(req.staff.assignedClasses);
+      const cls = await prisma.academicClass.findUnique({ where: { id: classId } });
+      if (!cls) return res.status(400).json({ error: 'Class not found' });
+      if (classes.length > 0 && !classes.includes(cls.name)) return res.status(403).json({ error: 'Not your assigned class' });
+    }
     const ann = await prisma.announcement.create({
       data: {
         title,
@@ -128,6 +141,7 @@ router.post('/announcements', requireRole('headteacher', 'admin'), async (req, r
         authorId: req.user.id,
         priority: priority || 'normal',
         schoolId: req.schoolId,
+        classId: classId || null,
       },
       include: { author: { select: { id: true, name: true } } },
     });

@@ -4,6 +4,7 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { logAudit } = require('../middleware/audit');
 const { checkPlanLimit } = require('../middleware/planLimit');
 const { generateStudentIndexNumber, generateStaffIndexNumber } = require('../lib/index-number');
+const { getGradeConfig } = require('../lib/gradebook-config');
 
 const router = Router();
 router.use(authenticate);
@@ -107,13 +108,8 @@ router.post('/marks', async (req, res) => {
       return res.status(400).json({ error: 'records must be a non-empty array' });
     }
 
-    const COMPONENT_NAMES = ['classExercise', 'homework', 'quiz', 'midterm', 'exam'];
-    const COMPONENT_MAX = { classExercise: 10, homework: 10, quiz: 30, midterm: 20, exam: 30 };
-    function calcTotal(components) {
-      if (!components) return 0;
-      if (typeof components === 'string') components = JSON.parse(components);
-      return COMPONENT_NAMES.reduce((sum, name) => sum + (parseFloat(components[name]) || 0), 0);
-    }
+    const { COMPONENT_NAMES, componentMax, calcTotal } = require('../lib/gradebook-config');
+    const { weights } = await getGradeConfig(req.schoolId);
     function scoreToGrade(total) {
       if (total >= 80) return 'A';
       if (total >= 70) return 'B';
@@ -134,9 +130,9 @@ router.post('/marks', async (req, res) => {
         let score = r.score;
         if (components && typeof components === 'object') {
           const c = {};
-          COMPONENT_NAMES.forEach(n => { c[n] = Math.min(parseFloat(components[n]) || 0, COMPONENT_MAX[n]); });
+          COMPONENT_NAMES.forEach(n => { c[n] = Math.min(parseFloat(components[n]) || 0, componentMax(weights, n)); });
           components = JSON.stringify(c);
-          score = calcTotal(components);
+          score = calcTotal(components, weights);
         } else {
           components = JSON.stringify({});
           score = parseFloat(score) || 0;

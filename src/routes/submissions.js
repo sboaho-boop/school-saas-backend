@@ -78,4 +78,32 @@ router.put('/:id/grade', async (req, res) => {
   }
 });
 
+// PUT /api/submissions/:id/return — staff returns submission for revision (status 'returned')
+router.put('/:id/return', async (req, res) => {
+  try {
+    if (req.isStudent) return res.status(403).json({ error: 'Only staff can return submissions' });
+    const { feedback } = req.body;
+    const submission = await prisma.submission.findFirst({ where: { id: req.params.id, schoolId: req.schoolId } });
+    if (!submission) return res.status(404).json({ error: 'Submission not found' });
+    const updated = await prisma.submission.update({
+      where: { id: req.params.id },
+      data: { status: 'returned', feedback: feedback !== undefined ? feedback : submission.feedback, gradedBy: req.user?.id || null, gradedAt: new Date() },
+    });
+
+    const assignment = await prisma.assignment.findFirst({ where: { id: submission.assignmentId, schoolId: req.schoolId } });
+    const guardians = await getStudentGuardians(req.schoolId, submission.studentId);
+    if (guardians.length > 0 && assignment) {
+      triggerNotification(req.schoolId, NOTIFICATION_TYPES.SUBMISSION_GRADED, {
+        title: `Assignment returned: ${assignment.title}`,
+        message: `Your submission was returned for revision. Please review and resubmit.`,
+        recipients: guardians,
+      }).catch(() => {});
+    }
+
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 module.exports = router;

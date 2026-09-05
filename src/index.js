@@ -70,6 +70,7 @@ const smsDeliveryRoutes = require('./routes/sms-delivery');
 const tutorAuthRoutes = require('./routes/tutor-auth');
 const tutorAIRoutes = require('./routes/tutor-ai');
 const tutorSubRoutes = require('./routes/tutor-subscription');
+const courseSiteRoutes = require('./routes/course-sites');
 const prisma = require('./lib/prisma');
 
 const app = express();
@@ -182,6 +183,7 @@ app.use('/api/tutor/auth', authLimiter, tutorAuthRoutes);
 app.use('/api/tutor/ai', tutorAIRoutes);
 app.use('/api/tutor/subscription', tutorSubRoutes);
 app.use('/api/tutor/upload', require('./routes/tutor-upload'));
+app.use('/api/course-sites', courseSiteRoutes);
 
 const path = require('path');
 const fs = require('fs');

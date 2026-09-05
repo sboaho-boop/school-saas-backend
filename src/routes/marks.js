@@ -1,16 +1,10 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireRole } = require('../middleware/auth');
 const { triggerNotification, NOTIFICATION_TYPES, getStudentGuardians } = require('../lib/notification-engine');
+const { COMPONENT_NAMES, parseWeights, getGradeConfig, saveGradeConfig, componentMax, calcTotal } = require('../lib/gradebook-config');
 
-const COMPONENT_NAMES = ['classExercise', 'homework', 'quiz', 'midterm', 'exam'];
 const COMPONENT_LABELS = { classExercise: 'Class Exercise', homework: 'Homework', quiz: 'Quiz', midterm: 'Mid-Term', exam: 'Exam' };
-const COMPONENT_MAX = { classExercise: 10, homework: 10, quiz: 30, midterm: 20, exam: 30 };
-
-function calcTotal(components) {
-  const c = typeof components === 'string' ? JSON.parse(components || '{}') : (components || {});
-  return COMPONENT_NAMES.reduce((sum, name) => sum + (parseFloat(c[name]) || 0), 0);
-}
 
 function scoreToGrade(total) {
   if (total >= 80) return 'A';
@@ -23,6 +17,30 @@ function scoreToGrade(total) {
 
 const router = Router();
 router.use(authenticate);
+
+// GET /api/marks/config — current gradebook weight configuration
+router.get('/config', async (req, res) => {
+  try {
+    const cfg = await getGradeConfig(req.schoolId);
+    res.json({ weights: cfg.weights, hasConfig: cfg.hasConfig, componentLabels: COMPONENT_LABELS });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// PUT /api/marks/config — save gradebook weight configuration (must total 100)
+router.put('/config', requireRole('headteacher', 'admin'), async (req, res) => {
+  try {
+    const { weights } = req.body;
+    if (!weights || typeof weights !== 'object') return res.status(400).json({ error: 'weights object required' });
+    const rawSum = COMPONENT_NAMES.reduce((s, n) => s + (parseFloat(weights[n]) || 0), 0);
+    if (Math.round(rawSum) !== 100) return res.status(400).json({ error: 'Weights must total 100' });
+    const saved = await saveGradeConfig(req.schoolId, weights);
+    res.json(saved);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
 function parseClasses(val) {
   if (Array.isArray(val)) return val;
@@ -69,11 +87,13 @@ router.post('/', async (req, res) => {
       } else return res.status(403).json({ error: 'No classes assigned' });
     }
 
+    const { weights } = await getGradeConfig(req.schoolId);
+
     if (components && typeof components === 'object') {
       const c = {};
-      COMPONENT_NAMES.forEach(n => { c[n] = Math.min(parseFloat(components[n]) || 0, COMPONENT_MAX[n]); });
+      COMPONENT_NAMES.forEach(n => { c[n] = Math.min(parseFloat(components[n]) || 0, componentMax(weights, n)); });
       components = JSON.stringify(c);
-      score = calcTotal(components);
+      score = calcTotal(components, weights);
     } else {
       components = JSON.stringify({});
       score = parseFloat(score) || 0;
@@ -120,6 +140,7 @@ router.post('/batch', async (req, res) => {
       else return res.status(400).json({ error: 'No active term found' });
     }
     const results = [];
+    const { weights } = await getGradeConfig(req.schoolId);
     for (const g of grades) {
       const termId = g.termId || activeTermId;
       if (!termId) continue;
@@ -128,9 +149,9 @@ router.post('/batch', async (req, res) => {
       let score = g.score;
       if (components && typeof components === 'object') {
         const c = {};
-        COMPONENT_NAMES.forEach(n => { c[n] = Math.min(parseFloat(components[n]) || 0, COMPONENT_MAX[n]); });
+        COMPONENT_NAMES.forEach(n => { c[n] = Math.min(parseFloat(components[n]) || 0, componentMax(weights, n)); });
         components = JSON.stringify(c);
-        score = calcTotal(components);
+        score = calcTotal(components, weights);
       } else {
         components = JSON.stringify({});
         score = parseFloat(score) || 0;
