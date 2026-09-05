@@ -277,7 +277,7 @@ async function sendTutorRenewalReminders() {
         </ul>
         <p><a href="https://eduplatformsoftware.com/tutor/pricing" style="display:inline-block;padding:12px 24px;background:#16a34a;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">Renew now →</a></p>
         <p>Payment is quick and safe via Hubtel Mobile Money or card. Renew before your plan ends to keep your streak and progress.</p>
-        <p>Cheers,<br/>Teacher Kofi 🎒</p>
+        <p>Cheers,<br/>Teacher Kofi </p>
       `;
 
       try {

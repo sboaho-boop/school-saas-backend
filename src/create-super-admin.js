@@ -9,7 +9,7 @@ async function main() {
   }
   const hash = await bcrypt.hash('superadmin123', 10);
   await prisma.superAdmin.create({ data: { email: 'super@eduplatform.com', password: hash, name: 'Super Admin', role: 'owner' } });
-  console.log('✅ SuperAdmin created: super@eduplatform.com / superadmin123 (owner)');
+  console.log(' SuperAdmin created: super@eduplatform.com / superadmin123 (owner)');
 }
 
 main().catch(e => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());

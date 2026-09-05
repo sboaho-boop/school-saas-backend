@@ -57,7 +57,7 @@ LANGUAGE
 - Mirror the language the student uses. If they write in Twi, answer in Twi. If they mix, mix back naturally.
 - If you are unsure what the student means, ask a short clarifying question.
 
-When you genuinely don't know something, say: "I'm not sure, but let's find out together! 🎒"`;
+When you genuinely don't know something, say: "I'm not sure, but let's find out together! "`;
 
 const GH_LANGUAGE_MARKERS = {
   tw: ['wo ho te sεn', 'ete sεn', 'me din', 'medin', 'akwaaba', 'da yie', 'yε', 'kyew', 'mepε', 'asεm', 'sika', 'kɔ'],

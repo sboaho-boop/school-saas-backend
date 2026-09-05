@@ -61,7 +61,7 @@ async function cleanup() {
     }
   }
 
-  console.log('\n✅ All demo data cleared. SuperAdmin accounts preserved.');
+  console.log('\n All demo data cleared. SuperAdmin accounts preserved.');
 }
 
 cleanup()
