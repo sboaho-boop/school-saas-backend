@@ -4,6 +4,7 @@ const prisma = require('../lib/prisma');
 const { signToken, verifyToken } = require('../lib/jwt');
 const { authenticate } = require('../middleware/auth');
 const { generateAIReply, checkAILimit, detectLanguage, buildKofiSystem, transcribeAudio } = require('../lib/ai');
+const { getGradeConfig } = require('../lib/gradebook-config');
 
 const router = Router();
 
@@ -141,6 +142,101 @@ router.post('/set-password', authenticate, async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     await prisma.student.update({ where: { id: studentId }, data: { password: hashed } });
     res.json({ message: 'Student password set' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/course-site', authenticateStudent, async (req, res) => {
+  try {
+    const student = await prisma.student.findUnique({
+      where: { id: req.studentId },
+      select: { classId: true, firstName: true, lastName: true },
+    });
+    if (!student) return res.status(404).json({ error: 'Student not found' });
+
+    const cls = await prisma.academicClass.findFirst({ where: { id: student.classId, schoolId: req.schoolId } });
+    if (!cls) return res.status(404).json({ error: 'Class not found' });
+
+    const [subjects, assignments, exams, lessonPlans, announcements, meetings, terms] = await Promise.all([
+      prisma.subject.findMany({ where: { classId: cls.id, schoolId: req.schoolId }, orderBy: { name: 'asc' } }),
+      prisma.assignment.findMany({
+        where: { classId: cls.id, schoolId: req.schoolId },
+        orderBy: { dueDate: 'asc' },
+        include: { submissions: { where: { studentId: req.studentId }, select: { id: true, status: true, grade: true, feedback: true, submittedAt: true } } },
+      }),
+      prisma.exam.findMany({ where: { classId: cls.id, schoolId: req.schoolId }, orderBy: { dueDate: 'asc' }, select: { id: true, title: true, subjectId: true, duration: true, totalPoints: true, dueDate: true } }),
+      prisma.lessonPlan.findMany({ where: { classId: cls.id, schoolId: req.schoolId, status: 'approved' }, orderBy: { createdAt: 'desc' }, take: 30 }),
+      prisma.announcement.findMany({ where: { schoolId: req.schoolId, OR: [{ classId: cls.id }, { classId: null }] }, orderBy: { createdAt: 'desc' }, take: 20, include: { author: { select: { name: true } } } }),
+      prisma.classMeeting.findMany({ where: { classId: cls.id, schoolId: req.schoolId }, orderBy: { meetingDate: 'desc' }, take: 10 }),
+      prisma.term.findMany({ where: { schoolId: req.schoolId }, orderBy: { isActive: 'desc' } }),
+    ]);
+
+    const subjectMap = Object.fromEntries(subjects.map((s) => [s.id, s]));
+    const activeTerm = terms.find((t) => t.isActive) || terms[0];
+
+    let myGrades = [];
+    let weights = null;
+    if (activeTerm) {
+      const cfg = await getGradeConfig(req.schoolId);
+      weights = cfg.weights;
+      const grades = await prisma.grade.findMany({ where: { studentId: req.studentId, termId: activeTerm.id, schoolId: req.schoolId } });
+      myGrades = subjects.map((sub) => {
+        const g = grades.find((gr) => gr.subjectId === sub.id);
+        let components = {};
+        if (g && g.components) {
+          try { components = JSON.parse(typeof g.components === 'string' ? g.components : '{}'); } catch { components = {}; }
+        }
+        return {
+          subjectId: sub.id,
+          subjectName: sub.name,
+          subjectCode: sub.code,
+          score: g ? g.score : 0,
+          grade: g ? g.grade : '',
+          remarks: g ? g.remarks : '',
+          components,
+        };
+      });
+    }
+
+    res.json({
+      class: { id: cls.id, name: cls.name, section: cls.section, teacher: cls.teacher },
+      term: activeTerm ? { id: activeTerm.id, name: activeTerm.name, academicYear: activeTerm.academicYear } : null,
+      subjects: subjects.map((s) => ({ id: s.id, name: s.name, code: s.code, teacher: s.teacher })),
+      assignments: assignments.map((a) => ({
+        id: a.id,
+        title: a.title,
+        description: a.description,
+        dueDate: a.dueDate,
+        totalPoints: a.totalPoints || 100,
+        subject: subjectMap[a.subjectId] ? subjectMap[a.subjectId].name : null,
+        submission: a.submissions[0] || null,
+      })),
+      exams: exams.map((e) => ({
+        id: e.id,
+        title: e.title,
+        subjectName: subjectMap[e.subjectId] ? subjectMap[e.subjectId].name : 'General',
+        duration: e.duration,
+        totalPoints: e.totalPoints,
+        dueDate: e.dueDate,
+      })),
+      lessonPlans: lessonPlans.map((lp) => ({
+        id: lp.id,
+        topic: lp.topic,
+        week: lp.week,
+        subjectName: subjectMap[lp.subjectId] ? subjectMap[lp.subjectId].name : 'General',
+      })),
+      announcements,
+      meetings,
+      weights,
+      myGrades,
+      stats: {
+        subjectCount: subjects.length,
+        assignmentCount: assignments.length,
+        examCount: exams.length,
+        announcementCount: announcements.length,
+      },
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
