@@ -347,7 +347,9 @@ router.post('/exam/:id/start', authenticateStudent, async (req, res) => {
     if (!active) active = await prisma.examSubmission.create({ data: { examId: exam.id, studentId: req.studentId, schoolId: req.schoolId, status: 'started', answers: '{}' } });
 
     const paper = buildPaper(exam.questions, exam.shuffleQuestions, true);
-    res.json({ examId: exam.id, title: exam.title, description: exam.description, duration: exam.duration, totalPoints: exam.totalPoints, passScore: exam.passScore, shuffleQuestions: exam.shuffleQuestions, questions: paper, attemptId: active.id, startedAt: active.startedAt });
+    let savedAnswers = {};
+    try { savedAnswers = JSON.parse(active.answers || '{}'); } catch { /* ignore */ }
+    res.json({ examId: exam.id, title: exam.title, description: exam.description, duration: exam.duration, totalPoints: exam.totalPoints, passScore: exam.passScore, shuffleQuestions: exam.shuffleQuestions, questions: paper, attemptId: active.id, startedAt: active.startedAt, savedAnswers });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
