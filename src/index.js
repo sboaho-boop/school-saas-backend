@@ -116,7 +116,10 @@ app.use(globalLimiter);
 
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 50, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many attempts. Try again later.' } });
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+const APP_VERSION = require('./version');
+
+app.get('/api/health', (req, res) => res.json({ status: 'ok', version: APP_VERSION, timestamp: new Date().toISOString() }));
+app.get('/api/version', (req, res) => res.json({ name: 'EduPlatform', version: APP_VERSION, release: '1', year: new Date().getFullYear(), timestamp: new Date().toISOString() }));
 
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/billing', billingRoutes);
