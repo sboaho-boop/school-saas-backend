@@ -14,14 +14,6 @@ router.get('/', async (req, res) => {
   res.json(orders);
 });
 
-router.get('/all', requireRole('headteacher', 'admin'), async (req, res) => {
-  const orders = await prisma.cardOrder.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: 500,
-  });
-  res.json(orders);
-});
-
 router.post('/', requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const { studentIds, notes } = req.body;

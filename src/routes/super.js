@@ -515,4 +515,30 @@ router.put('/feedback/:id', requireSuper, loadSuperAdmin, async (req, res) => {
   res.json(fb);
 });
 
+router.get('/orders', requireSuper, async (req, res) => {
+  try {
+    const orders = await prisma.cardOrder.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/orders/:id/status', requireSuper, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const valid = ['approved', 'printing', 'shipped', 'delivered'];
+    if (!valid.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    const order = await prisma.cardOrder.findUnique({ where: { id: req.params.id } });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    const updated = await prisma.cardOrder.update({ where: { id: req.params.id }, data: { status } });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 module.exports = router;
