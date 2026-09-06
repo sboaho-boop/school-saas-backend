@@ -167,6 +167,20 @@ router.get('/me', async (req, res) => {
   } catch { res.status(401).json({ error: 'Invalid token' }); }
 });
 
+router.put('/me', authenticate, async (req, res) => {
+  try {
+    const { phone, name } = req.body;
+    if (phone === undefined && name === undefined) return res.status(400).json({ error: 'Provide phone or name' });
+    const data = {};
+    if (phone !== undefined) data.phone = String(phone).trim();
+    if (name !== undefined) data.name = String(name).trim();
+    const user = await prisma.user.update({ where: { id: req.user.id }, data });
+    res.json({ id: user.id, email: user.email, name: user.name, role: user.role, schoolId: user.schoolId, phone: user.phone, twoFactorEnabled: user.twoFactorEnabled });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/verify-otp', async (req, res) => {
   try {
     const { email, otp } = req.body;

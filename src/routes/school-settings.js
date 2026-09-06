@@ -88,6 +88,16 @@ router.put('/onboarding-complete', authenticate, requireRole('headteacher', 'adm
   }
 });
 
+router.get('/profile', authenticate, requireRole('headteacher', 'admin', 'accountant'), async (req, res) => {
+  try {
+    const school = await prisma.school.findUnique({ where: { id: req.schoolId } });
+    if (!school) return res.status(404).json({ error: 'School not found' });
+    res.json({ school });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.put('/profile', authenticate, requireRole('headteacher', 'admin'), async (req, res) => {
   try {
     const { name, address, country, schoolType, primaryColor } = req.body;
