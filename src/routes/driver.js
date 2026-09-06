@@ -131,4 +131,48 @@ router.put('/trip/:id/:action', authenticateDriver, async (req, res) => {
   }
 });
 
+router.get('/trip/:id/students', authenticateDriver, async (req, res) => {
+  try {
+    const trip = await prisma.driverTrip.findFirst({ where: { id: req.params.id, schoolId: req.schoolId, staffId: req.driverId } });
+    if (!trip) return res.status(404).json({ error: 'Trip not found' });
+    const students = await prisma.student.findMany({
+      where: { schoolId: req.schoolId, routeId: trip.routeId, status: 'active' },
+      select: { id: true, firstName: true, lastName: true, indexNumber: true, className: true, pickupStop: true },
+      orderBy: { firstName: 'asc' },
+    });
+    const rollCall = await prisma.driverStudent.findMany({
+      where: { tripId: trip.id },
+      select: { studentId: true, status: true, markedAt: true },
+    });
+    const byStudent = new Map(rollCall.map((rc) => [rc.studentId, rc]));
+    const studentsWithRollCall = students.map((s) => ({
+      ...s,
+      rollCall: byStudent.get(s.id) ? { status: byStudent.get(s.id).status, markedAt: byStudent.get(s.id).markedAt } : { status: 'awaiting', markedAt: null },
+    }));
+    res.json({ tripId: trip.id, routeId: trip.routeId, students: studentsWithRollCall });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.put('/trip/:id/students/:studentId', authenticateDriver, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const VALID = ['awaiting', 'onboard', 'dropped'];
+    if (!VALID.includes(status)) return res.status(400).json({ error: 'Invalid status' });
+    const trip = await prisma.driverTrip.findFirst({ where: { id: req.params.id, schoolId: req.schoolId, staffId: req.driverId } });
+    if (!trip) return res.status(404).json({ error: 'Trip not found' });
+    const student = await prisma.student.findFirst({ where: { id: req.params.studentId, schoolId: req.schoolId, routeId: trip.routeId } });
+    if (!student) return res.status(404).json({ error: 'Student is not on this route' });
+    const rc = await prisma.driverStudent.upsert({
+      where: { tripId_studentId: { tripId: trip.id, studentId: student.id } },
+      update: { status, markedAt: new Date() },
+      create: { tripId: trip.id, studentId: student.id, schoolId: req.schoolId, pickupStop: student.pickupStop || '', status, markedAt: new Date() },
+    });
+    res.json(rc);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 module.exports = router;

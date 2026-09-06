@@ -71,6 +71,59 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// === ROUTE STUDENT ASSIGNMENT ===
+
+router.get('/:id/students', async (req, res) => {
+  try {
+    const route = await prisma.transportRoute.findFirst({ where: { id: req.params.id, schoolId: req.schoolId } });
+    if (!route) return res.status(404).json({ error: 'Not found' });
+    const students = await prisma.student.findMany({
+      where: { schoolId: req.schoolId, routeId: route.id, status: 'active' },
+      select: { id: true, firstName: true, lastName: true, indexNumber: true, className: true, pickupStop: true },
+      orderBy: { firstName: 'asc' },
+    });
+    res.json(students);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.put('/:id/students', async (req, res) => {
+  try {
+    const route = await prisma.transportRoute.findFirst({ where: { id: req.params.id, schoolId: req.schoolId } });
+    if (!route) return res.status(404).json({ error: 'Not found' });
+    const { assignments } = req.body;
+    if (!Array.isArray(assignments)) return res.status(400).json({ error: 'assignments array required' });
+    let routeStops = route.stops;
+    if (typeof routeStops === 'string') { try { routeStops = JSON.parse(routeStops); } catch { routeStops = []; } }
+    for (const a of assignments) {
+      if (!a.studentId || !a.pickupStop) return res.status(400).json({ error: 'Each assignment needs studentId and pickupStop' });
+      if (!routeStops.includes(a.pickupStop)) return res.status(400).json({ error: `Stop "${a.pickupStop}" is not on this route` });
+      await prisma.student.updateMany({
+        where: { id: a.studentId, schoolId: req.schoolId },
+        data: { routeId: route.id, pickupStop: a.pickupStop },
+      });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.delete('/:id/students/:studentId', async (req, res) => {
+  try {
+    const route = await prisma.transportRoute.findFirst({ where: { id: req.params.id, schoolId: req.schoolId } });
+    if (!route) return res.status(404).json({ error: 'Not found' });
+    await prisma.student.updateMany({
+      where: { id: req.params.studentId, schoolId: req.schoolId, routeId: route.id },
+      data: { routeId: null, pickupStop: null },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // === DRIVER TRIP CHECK-IN ===
 
 router.post('/driver-checkin', async (req, res) => {
