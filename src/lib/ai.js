@@ -194,7 +194,7 @@ Rules: NEVER invent video URLs — only use a real, famous video you are 100% su
 }
 
 const AI_LIMITS = {
-  free: 5,
+  free: 50,
   pro: 100,
   enterprise: -1, // unlimited
 };

@@ -9,7 +9,7 @@ const { authenticateTutor } = require('./tutor-auth');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-const TUTOR_AI_LIMITS = { free: 5, pro: 100, unlimited: -1 };
+const TUTOR_AI_LIMITS = { free: 50, pro: 100, unlimited: -1 };
 
 const router = Router();
 router.use(authenticateTutor);

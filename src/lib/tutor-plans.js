@@ -16,6 +16,6 @@ const PLANS = {
   },
 };
 
-const LIMITS = { free: 5, pro: 100, unlimited: -1 };
+const LIMITS = { free: 50, pro: 100, unlimited: -1 };
 
 module.exports = { PLANS, LIMITS };
