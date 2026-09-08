@@ -190,6 +190,7 @@ app.use('/api/tutor/subscription', tutorSubRoutes);
 app.use('/api/tutor/upload', require('./routes/tutor-upload'));
 app.use('/api/course-sites', courseSiteRoutes);
 app.use('/api/driver', require('./routes/driver'));
+app.use('/api/kofi/demo', require('./routes/kofi-demo'));
 
 const path = require('path');
 const fs = require('fs');
