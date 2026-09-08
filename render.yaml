@@ -2,10 +2,8 @@ services:
   - type: web
     name: eduplatform-backend
     runtime: node
-    plan: free
-    # NOTE: upgrade to at least a paid plan before official launch --
-    # free instances spin down after inactivity (cold starts) and free
-    # Postgres has no automated backups.
+    plan: starter
+    # Paid plan: no idle spin-down (cold starts gone). Postgres pod -- created free; consider paying for automated backups before official launch.
     buildCommand: npm install && npx prisma generate
     startCommand: node scripts/migrate.js && node src/index.js
     disk:
