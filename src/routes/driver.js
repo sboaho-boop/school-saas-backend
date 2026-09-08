@@ -2,6 +2,7 @@ const { Router } = require('express');
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
 const { verifyToken } = require('../lib/jwt');
+const { loginLimiter } = require('../middleware/rateLimit');
 
 const router = Router();
 
@@ -36,7 +37,7 @@ const TRIP_FIELDS = {
   },
 };
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { indexNumber } = req.body;
     if (!indexNumber) return res.status(400).json({ error: 'Index number required' });

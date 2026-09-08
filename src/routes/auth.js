@@ -7,6 +7,7 @@ const QRCode = require('qrcode');
 const prisma = require('../lib/prisma');
 const { signToken, verifyToken } = require('../lib/jwt');
 const { authenticate } = require('../middleware/auth');
+const { loginLimiter } = require('../middleware/rateLimit');
 const { sendRegistrationAlert, sendLoginAlert } = require('../lib/sms');
 const { sendOtpEmail } = require('../lib/email');
 const { sendSms } = require('../lib/sms');
@@ -81,7 +82,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });

@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const { signToken, verifyToken } = require('../lib/jwt');
 const { authenticate } = require('../middleware/auth');
+const { loginLimiter } = require('../middleware/rateLimit');
 const { generateAIReply, checkAILimit, detectLanguage, buildKofiSystem, transcribeAudio } = require('../lib/ai');
 const { getGradeConfig } = require('../lib/gradebook-config');
 const { gradeAnswer, buildPaper, AUTO_GRADED } = require('../lib/exam-engine');
@@ -23,7 +24,7 @@ function authenticateStudent(req, res, next) {
   }
 }
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { indexNumber, password } = req.body;
     if (!indexNumber || !password) return res.status(400).json({ error: 'Index number and password required' });

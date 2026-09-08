@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
 const { sendTutorWelcomeEmail, sendTutorResetEmail } = require('../lib/email');
+const { loginLimiter } = require('../middleware/rateLimit');
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'teacher-kofi-secret';
@@ -59,7 +60,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {

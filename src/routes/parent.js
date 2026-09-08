@@ -3,13 +3,14 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const prisma = require('../lib/prisma');
 const { signToken, verifyToken } = require('../lib/jwt');
+const { loginLimiter } = require('../middleware/rateLimit');
 const { createCheckout } = require('../lib/hubtel-payment');
 const { directReceiveMoney } = require('../lib/hubtel-direct-receive');
 const { publicBaseUrl } = require('../lib/urls');
 
 const router = Router();
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email) return res.status(400).json({ error: 'Email required' });

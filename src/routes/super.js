@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
 const { sendEmail, sendOtpEmail } = require('../lib/email');
+const { loginLimiter } = require('../middleware/rateLimit');
 
 const router = Router();
 
@@ -41,7 +42,7 @@ function generateSchoolCode() {
   return code;
 }
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
