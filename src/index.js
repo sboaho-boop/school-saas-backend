@@ -72,6 +72,7 @@ const tutorAuthRoutes = require('./routes/tutor-auth');
 const tutorAIRoutes = require('./routes/tutor-ai');
 const tutorSubRoutes = require('./routes/tutor-subscription');
 const courseSiteRoutes = require('./routes/course-sites');
+const marketplaceRoutes = require('./routes/marketplace');
 const prisma = require('./lib/prisma');
 
 const app = express();
@@ -191,6 +192,7 @@ app.use('/api/tutor/upload', require('./routes/tutor-upload'));
 app.use('/api/course-sites', courseSiteRoutes);
 app.use('/api/driver', require('./routes/driver'));
 app.use('/api/kofi/demo', require('./routes/kofi-demo'));
+app.use('/api/marketplace', marketplaceRoutes);
 
 const path = require('path');
 const fs = require('fs');

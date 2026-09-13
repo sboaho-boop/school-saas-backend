@@ -1202,3 +1202,78 @@ model TutorConversation {
 
   user TutorUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+// === ONLINE TEACHING MARKETPLACE ===
+
+model MarketplaceTeacher {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  password      String
+  phone         String   @default("")
+  bio           String   @default("")
+  pricePerLesson Float   @default(0)
+  subjects      String   @default("[]")
+  status        String   @default("active")
+  approved      Boolean  @default(true)
+  earnings      Float    @default(0)
+  totalStudents Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  lessons     MarketplaceLesson[]
+  enrollments MarketplaceEnrollment[]
+}
+
+model MarketplaceStudent {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  phone     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enrollments MarketplaceEnrollment[]
+}
+
+model MarketplaceLesson {
+  id          String   @id @default(cuid())
+  teacherId   String
+  subject     String
+  title       String
+  description String   @default("")
+  price       Float    @default(0)
+  date        String
+  startTime   String
+  endTime     String   @default("")
+  durationMin Int      @default(60)
+  status      String   @default("scheduled")
+  maxStudents Int      @default(50)
+  joinLink    String   @default("")
+  roomReady   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  teacher     MarketplaceTeacher      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  enrollments MarketplaceEnrollment[]
+}
+
+model MarketplaceEnrollment {
+  id          String   @id @default(cuid())
+  lessonId    String
+  studentId   String
+  teacherId   String
+  amount      Float
+  platformFee Float    @default(0)
+  teacherEarn Float    @default(0)
+  status      String   @default("pending")
+  reference   String   @default("")
+  channel     String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lesson  MarketplaceLesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  student MarketplaceStudent   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacher MarketplaceTeacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+}
