@@ -6,11 +6,22 @@ const prisma = require('../lib/prisma');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'teacher-kofi-secret';
 
-const rooms = new Map(); // lessonId -> { sockets: Set, strokes: [] }
+const rooms = new Map(); // lessonId -> room state
 const MAX_STROKES = 3000;
+const MAX_MEDIA = 30;
+
+function defaultRoom() {
+  return {
+    sockets: new Set(),
+    strokes: [],
+    media: [], // { id, kind, url, x, y, w, h }
+    permissions: { draw: false, share: false, speak: false }, // applied to students
+    feedActive: false,
+  };
+}
 
 function getRoom(lessonId) {
-  if (!rooms.has(lessonId)) rooms.set(lessonId, { sockets: new Set(), strokes: [] });
+  if (!rooms.has(lessonId)) rooms.set(lessonId, defaultRoom());
   return rooms.get(lessonId);
 }
 
@@ -22,6 +33,13 @@ function broadcast(room, msg, except = null) {
   const text = JSON.stringify(msg);
   for (const ws of room.sockets) {
     if (ws !== except && ws.readyState === 1) ws.send(text);
+  }
+}
+
+function relayTo(room, peerId, msg) {
+  const text = JSON.stringify(msg);
+  for (const ws of room.sockets) {
+    if (ws.peer && ws.peer.id === peerId && ws.readyState === 1) ws.send(text);
   }
 }
 
@@ -68,7 +86,7 @@ function attachClassroomSocket(server) {
       return;
     }
     const prefix = '/ws/classroom/';
-    if (!url.pathname.startsWith(prefix)) return; // let other handlers decide
+    if (!url.pathname.startsWith(prefix)) return;
 
     const lessonId = decodeURIComponent(url.pathname.slice(prefix.length));
     const token = url.searchParams.get('token') || '';
@@ -121,6 +139,9 @@ function attachClassroomSocket(server) {
       },
       participants: presenceList(room),
       strokes: room.strokes.slice(-MAX_STROKES),
+      media: room.media,
+      permissions: { ...room.permissions },
+      feedActive: room.feedActive,
     });
 
     broadcast(room, { type: 'presence', participants: presenceList(room) }, ws);
@@ -132,6 +153,10 @@ function attachClassroomSocket(server) {
       } catch {
         return;
       }
+
+      const isTeacher = peer.role === 'teacher';
+      const student = peer.role === 'student';
+
       if (msg.type === 'chat') {
         const text = String(msg.text || '').slice(0, 2000).trim();
         if (!text) return;
@@ -141,13 +166,62 @@ function attachClassroomSocket(server) {
       } else if (msg.type === 'draw') {
         const stroke = msg.stroke;
         if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) return;
+        if (student && !room.permissions.draw) return;
         stroke.points = stroke.points.slice(0, 4000);
         room.strokes.push(stroke);
         if (room.strokes.length > MAX_STROKES) room.strokes.splice(0, room.strokes.length - MAX_STROKES);
         broadcast(room, { type: 'draw', stroke }, ws);
       } else if (msg.type === 'clear') {
+        if (student && !room.permissions.draw) return;
         room.strokes = [];
         broadcast(room, { type: 'clear' });
+      } else if (msg.type === 'perms') {
+        if (!isTeacher) return;
+        room.permissions.draw = !!msg.draw;
+        room.permissions.share = !!msg.share;
+        room.permissions.speak = !!msg.speak;
+        broadcast(room, { type: 'perms', permissions: { draw: room.permissions.draw, share: room.permissions.share, speak: room.permissions.speak } });
+      } else if (msg.type === 'feed') {
+        if (!isTeacher) return;
+        room.feedActive = !!msg.active;
+        broadcast(room, { type: 'feed', active: room.feedActive });
+      } else if (msg.type === 'mediaAdd') {
+        if (student && !room.permissions.share) return;
+        const kind = msg.kind === 'video' ? 'video' : 'image';
+        if (!msg.url || typeof msg.url !== 'string' || msg.url.length > 5000) return;
+        const item = {
+          id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+          kind,
+          url: msg.url,
+          w: Math.max(8, Math.min(90, Number(msg.w) || 40)),
+          x: Math.max(0, Math.min(90, Number(msg.x) || 20)),
+          y: Math.max(0, Math.min(80, Number(msg.y) || 10)),
+          by: peer.id,
+        };
+        room.media.push(item);
+        if (room.media.length > MAX_MEDIA) room.media.splice(0, room.media.length - MAX_MEDIA);
+        broadcast(room, { type: 'mediaAdd', item });
+        send(ws, { type: 'mediaAdd', item });
+      } else if (msg.type === 'mediaMoved') {
+        if (student && !room.permissions.share) return;
+        const item = room.media.find((m) => m.id === msg.id);
+        if (!item) return;
+        if (typeof msg.x === 'number') item.x = Math.max(0, Math.min(95, msg.x));
+        if (typeof msg.y === 'number') item.y = Math.max(0, Math.min(90, msg.y));
+        if (typeof msg.w === 'number') item.w = Math.max(8, Math.min(95, msg.w));
+        broadcast(room, { type: 'mediaMoved', id: msg.id, x: item.x, y: item.y, w: item.w });
+      } else if (msg.type === 'mediaRemove') {
+        if (student && !room.permissions.share) return;
+        const idx = room.media.findIndex((m) => m.id === msg.id);
+        if (idx === -1) return;
+        room.media.splice(idx, 1);
+        broadcast(room, { type: 'mediaRemove', id: msg.id });
+      } else if (msg.type === 'rtc') {
+        if (!msg.to || !msg.data) return;
+        // A student may only initiate an offer (begin speaking) if the
+        // teacher has granted the speak permission. Answers and ICE are relayed.
+        if (student && !room.permissions.speak) return;
+        relayTo(room, String(msg.to), { type: 'rtc', from: peer.id, data: msg.data });
       }
     });
 

@@ -1,11 +1,22 @@
 const { Router } = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const path = require('path');
 const prisma = require('../lib/prisma');
 const { directReceiveMoney } = require('../lib/hubtel-direct-receive');
 const { publicBaseUrl } = require('../lib/urls');
 
 const router = Router();
+
+const UPLOAD_DIR = process.env.UPLOAD_DIR
+  || (process.env.RAILWAY_VOLUME_MOUNT ? path.join(process.env.RAILWAY_VOLUME_MOUNT, 'uploads') : path.join(__dirname, '..', '..', 'uploads'));
+
+const mediaStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => cb(null, `mkt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${path.extname(file.originalname || '')}`),
+});
+const mediaUpload = multer({ storage: mediaStorage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'teacher-kofi-secret';
 const CHANNELS = ['mtn-gh', 'vodafone-gh', 'tigo-gh'];
@@ -310,6 +321,19 @@ router.get('/room/:lessonId', authenticateMarketplace, async (req, res) => {
   } catch (err) {
     console.error('Marketplace room access error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Media/board upload (authenticated). The room WS enforces who may actually
+// attach media to the board; this just stores the file and returns a URL.
+router.post('/room/upload', authenticateMarketplace, mediaUpload.single('file'), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const kind = (req.body.kind === 'video' || String(req.file.mimetype || '').startsWith('video/')) ? 'video' : 'image';
+    res.json({ url: `/uploads/${req.file.filename}`, kind });
+  } catch (err) {
+    console.error('Marketplace media upload error:', err.message);
+    res.status(500).json({ error: 'Upload failed' });
   }
 });
 
