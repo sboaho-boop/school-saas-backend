@@ -1213,6 +1213,7 @@ model MarketplaceTeacher {
   phone         String   @default("")
   bio           String   @default("")
   pricePerLesson Float   @default(0)
+  subscriptionPrice Float @default(0) // optional per-teacher monthly subscription (GHS)
   subjects      String   @default("[]")
   status        String   @default("active")
   approved      Boolean  @default(true)
@@ -1223,6 +1224,7 @@ model MarketplaceTeacher {
 
   lessons     MarketplaceLesson[]
   enrollments MarketplaceEnrollment[]
+  subscriptions MarketplaceSubscription[]
 }
 
 model MarketplaceStudent {
@@ -1234,7 +1236,26 @@ model MarketplaceStudent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  enrollments MarketplaceEnrollment[]
+  enrollments   MarketplaceEnrollment[]
+  subscriptions MarketplaceSubscription[]
+}
+
+model MarketplaceSubscription {
+  id        String   @id @default(cuid())
+  studentId String
+  type      String // 'platform' (all lessons) or 'teacher' (per-teacher)
+  teacherId String?
+  amount    Float // monthly amount (GHS)
+  status    String   @default("active") // 'active' | 'expired' | 'cancelled'
+  startDate DateTime
+  endDate   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student MarketplaceStudent @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  teacher MarketplaceTeacher? @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
 }
 
 model MarketplaceLesson {

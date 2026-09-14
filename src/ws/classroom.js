@@ -61,11 +61,28 @@ async function verifyAccess(decoded, lessonId) {
   const enrollment = await prisma.marketplaceEnrollment.findFirst({
     where: { lessonId, studentId: decoded.id, status: 'paid' },
   });
-  // 'open' lessons accept any signed-in student, even un-enrolled.
-  if (!enrollment && lesson.accessMode !== 'open') {
+  const covered = !enrollment ? await subscriptionCovers(decoded.id, lesson) : null;
+  // 'open' lessons accept any signed-in student; enrolled-only lessons accept paid enrollment or an active subscription.
+  if (!enrollment && !covered && lesson.accessMode !== 'open') {
     return { ok: false, status: 403, message: 'You are not enrolled in this lesson' };
   }
   return { ok: true, lesson };
+}
+
+async function subscriptionCovers(studentId, lesson) {
+  const now = new Date();
+  const subscription = await prisma.marketplaceSubscription.findFirst({
+    where: {
+      studentId,
+      status: 'active',
+      endDate: { gte: now },
+      OR: [
+        { type: 'platform' },
+        { type: 'teacher', teacherId: lesson.teacherId },
+      ],
+    },
+  });
+  return subscription || null;
 }
 
 async function loadPeer(decoded) {

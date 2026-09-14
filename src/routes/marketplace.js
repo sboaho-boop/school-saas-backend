@@ -21,6 +21,24 @@ const mediaUpload = multer({ storage: mediaStorage, limits: { fileSize: 10 * 102
 const JWT_SECRET = process.env.JWT_SECRET || 'teacher-kofi-secret';
 const CHANNELS = ['mtn-gh', 'vodafone-gh', 'tigo-gh'];
 const TEACHER_SHARE = 0.7; // teacher keeps 70%, platform 30%
+const PLATFORM_SUBSCRIPTION_PRICE = 30; // GHS/month for platform-wide subscription
+
+/** Check if a student's active subscription covers a lesson. */
+async function subscriptionCovers(studentId, lesson) {
+  const now = new Date();
+  const subscription = await prisma.marketplaceSubscription.findFirst({
+    where: {
+      studentId,
+      status: 'active',
+      endDate: { gte: now },
+      OR: [
+        { type: 'platform' },
+        { type: 'teacher', teacherId: lesson.teacherId },
+      ],
+    },
+  });
+  return subscription || null;
+}
 
 function signToken(role, id) {
   return jwt.sign({ id, type: 'marketplace', role }, JWT_SECRET, { expiresIn: '30d' });
@@ -96,7 +114,7 @@ router.post('/auth/teacher/register', async (req, res) => {
     const hash = await bcrypt.hash(password, 10);
     const teacher = await prisma.marketplaceTeacher.create({
       data: { name, email: email.toLowerCase(), password: hash, phone: phone || '' },
-      select: { id: true, name: true, email: true, phone: true, pricePerLesson: true, subjects: true, approved: true },
+      select: { id: true, name: true, email: true, phone: true, pricePerLesson: true, subscriptionPrice: true, subjects: true, approved: true },
     });
     res.status(201).json({ teacher, token: signToken('teacher', teacher.id) });
   } catch (err) {
@@ -116,7 +134,7 @@ router.post('/auth/teacher/login', async (req, res) => {
     res.json({
       teacher: {
         id: teacher.id, name: teacher.name, email: teacher.email, phone: teacher.phone,
-        bio: teacher.bio, pricePerLesson: teacher.pricePerLesson, subjects: teacher.subjects,
+        bio: teacher.bio, pricePerLesson: teacher.pricePerLesson, subscriptionPrice: teacher.subscriptionPrice, subjects: teacher.subjects,
         status: teacher.status, approved: teacher.approved,
       },
       token: signToken('teacher', teacher.id),
@@ -178,7 +196,7 @@ router.get('/teacher/me', authenticateMarketplace, requireRole('teacher'), async
       where: { id: req.actorId },
       select: {
         id: true, name: true, email: true, phone: true, bio: true,
-        pricePerLesson: true, subjects: true, status: true, approved: true,
+        pricePerLesson: true, subscriptionPrice: true, subjects: true, status: true, approved: true,
         earnings: true, totalStudents: true, createdAt: true,
       },
     });
@@ -191,7 +209,7 @@ router.get('/teacher/me', authenticateMarketplace, requireRole('teacher'), async
 
 router.put('/teacher/me', authenticateMarketplace, requireRole('teacher'), async (req, res) => {
   try {
-    const { name, phone, bio, pricePerLesson, subjects } = req.body;
+    const { name, phone, bio, pricePerLesson, subscriptionPrice, subjects } = req.body;
     const data = {};
     if (name !== undefined) data.name = name;
     if (phone !== undefined) data.phone = phone;
@@ -200,6 +218,11 @@ router.put('/teacher/me', authenticateMarketplace, requireRole('teacher'), async
       const price = Number(pricePerLesson);
       if (isNaN(price) || price < 0) return res.status(400).json({ error: 'Invalid price' });
       data.pricePerLesson = price;
+    }
+    if (subscriptionPrice !== undefined) {
+      const subPrice = Number(subscriptionPrice);
+      if (isNaN(subPrice) || subPrice < 0) return res.status(400).json({ error: 'Invalid subscription price' });
+      data.subscriptionPrice = subPrice;
     }
     if (subjects !== undefined) {
       if (!Array.isArray(subjects)) return res.status(400).json({ error: 'subjects must be an array' });
@@ -210,7 +233,7 @@ router.put('/teacher/me', authenticateMarketplace, requireRole('teacher'), async
       data,
       select: {
         id: true, name: true, email: true, phone: true, bio: true,
-        pricePerLesson: true, subjects: true, earnings: true, totalStudents: true,
+        pricePerLesson: true, subscriptionPrice: true, subjects: true, earnings: true, totalStudents: true,
       },
     });
     res.json(teacher);
@@ -324,8 +347,9 @@ router.get('/room/:lessonId', authenticateMarketplace, async (req, res) => {
       const enrollment = await prisma.marketplaceEnrollment.findFirst({
         where: { lessonId: lesson.id, studentId: student.id, status: 'paid' },
       });
-      // 'open' lessons accept any signed-in student, even un-enrolled.
-      if (!enrollment && lesson.accessMode !== 'open') {
+      const covered = !enrollment ? await subscriptionCovers(student.id, lesson) : null;
+      // 'open' lessons accept any signed-in student; enrolled-only lessons accept paid enrollment or active subscription.
+      if (!enrollment && !covered && lesson.accessMode !== 'open') {
         return res.status(403).json({ error: 'You are not enrolled in this lesson' });
       }
       me = { id: student.id, name: student.name, role: 'student' };
@@ -596,7 +620,140 @@ router.get('/teacher/earnings', authenticateMarketplace, requireRole('teacher'),
   }
 });
 
+// ---------- Subscriptions ----------
+
+// Public: available subscription plans (platform + per-teacher offers).
+router.get('/subscriptions/plans', async (req, res) => {
+  try {
+    const teachers = await prisma.marketplaceTeacher.findMany({
+      where: { status: 'active', subscriptionPrice: { gt: 0 } },
+      select: { id: true, name: true, subjects: true, subscriptionPrice: true },
+      orderBy: { name: 'asc' },
+    });
+    res.json({
+      platformPrice: PLATFORM_SUBSCRIPTION_PRICE,
+      teachers,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Student's subscriptions.
+router.get('/student/subscriptions', authenticateMarketplace, requireRole('student'), async (req, res) => {
+  try {
+    const subs = await prisma.marketplaceSubscription.findMany({
+      where: { studentId: req.actorId },
+      orderBy: { createdAt: 'desc' },
+      include: { teacher: { select: { id: true, name: true } } },
+    });
+    res.json(subs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Student subscribes to platform or a specific teacher. Auto-activates for 30 days (Hubtel billing TODO).
+router.post('/subscriptions', authenticateMarketplace, requireRole('student'), async (req, res) => {
+  try {
+    const { type, teacherId } = req.body;
+    if (type !== 'platform' && type !== 'teacher') {
+      return res.status(400).json({ error: 'Type must be "platform" or "teacher"' });
+    }
+    if (type === 'teacher' && !teacherId) {
+      return res.status(400).json({ error: 'teacherId is required for per-teacher subscriptions' });
+    }
+
+    let amount = PLATFORM_SUBSCRIPTION_PRICE;
+    if (type === 'teacher') {
+      const teacher = await prisma.marketplaceTeacher.findUnique({ where: { id: teacherId }, select: { id: true, subscriptionPrice: true } });
+      if (!teacher) return res.status(404).json({ error: 'Teacher not found' });
+      if (teacher.subscriptionPrice <= 0) {
+        return res.status(400).json({ error: 'This teacher does not offer a subscription plan yet' });
+      }
+      amount = teacher.subscriptionPrice;
+    }
+
+    // Prevent duplicate active subscription for the same scope.
+    const existing = await prisma.marketplaceSubscription.findFirst({
+      where: {
+        studentId: req.actorId,
+        status: 'active',
+        endDate: { gte: new Date() },
+        ...(type === 'platform' ? { type: 'platform' } : { type: 'teacher', teacherId }),
+      },
+    });
+    if (existing) return res.status(409).json({ error: 'You already have an active subscription for this scope' });
+
+    const now = new Date();
+    const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const subscription = await prisma.marketplaceSubscription.create({
+      data: {
+        studentId: req.actorId,
+        type,
+        teacherId: type === 'teacher' ? teacherId : null,
+        amount,
+        status: 'active',
+        startDate: now,
+        endDate,
+      },
+      include: { teacher: { select: { id: true, name: true } } },
+    });
+
+    res.status(201).json(subscription);
+  } catch (err) {
+    console.error('Subscribe error:', err.message);
+    res.status(500).json({ error: err.message || 'Could not create subscription' });
+  }
+});
+
 // ---------- Enrollment & payment ----------
+
+// Student joins a lesson for free using an active subscription (no MoMo).
+router.post('/lessons/:id/join', authenticateMarketplace, requireRole('student'), async (req, res) => {
+  try {
+    const lesson = await prisma.marketplaceLesson.findUnique({ where: { id: req.params.id } });
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    if (lesson.status === 'cancelled' || lesson.status === 'ended') {
+      return res.status(400).json({ error: 'This lesson is no longer accepting enrollments' });
+    }
+
+    const existingPaid = await prisma.marketplaceEnrollment.findFirst({
+      where: { lessonId: lesson.id, studentId: req.actorId, status: 'paid' },
+    });
+    if (existingPaid) return res.status(409).json({ error: 'You have already enrolled in this lesson' });
+
+    const covered = await subscriptionCovers(req.actorId, lesson);
+    if (!covered) {
+      return res.status(403).json({ error: 'A subscription covering this lesson is required' });
+    }
+
+    const paidCount = await prisma.marketplaceEnrollment.count({
+      where: { lessonId: lesson.id, status: 'paid' },
+    });
+    if (paidCount >= lesson.maxStudents) return res.status(400).json({ error: 'This lesson is full' });
+
+    const student = await prisma.marketplaceStudent.findUnique({ where: { id: req.actorId }, select: { id: true } });
+    if (!student) return res.status(404).json({ error: 'Student account not found' });
+
+    const enrollment = await prisma.marketplaceEnrollment.create({
+      data: {
+        lessonId: lesson.id,
+        studentId: student.id,
+        teacherId: lesson.teacherId,
+        amount: 0,
+        status: 'paid',
+        reference: `SUB-${covered.id}-${Date.now().toString(36)}`,
+        channel: 'subscription',
+      },
+    });
+    res.status(201).json({ enrollment: { id: enrollment.id, status: enrollment.status, amount: 0 }, viaSubscription: true });
+  } catch (err) {
+    console.error('Join via subscription error:', err.message);
+    res.status(500).json({ error: err.message || 'Could not join lesson' });
+  }
+});
 
 // Student enrolls in a lesson → initiate MoMo payment.
 router.post('/lessons/:id/enroll', authenticateMarketplace, requireRole('student'), async (req, res) => {
