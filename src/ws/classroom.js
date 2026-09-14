@@ -219,8 +219,10 @@ function attachClassroomSocket(server) {
       } else if (msg.type === 'rtc') {
         if (!msg.to || !msg.data) return;
         // A student may only initiate an offer (begin speaking) if the
-        // teacher has granted the speak permission. Answers and ICE are relayed.
-        if (student && !room.permissions.speak) return;
+        // teacher has granted the speak permission. Answers and ICE
+        // (needed to receive the teacher's broadcast) are always relayed.
+        const isOffer = !!msg.data.description && msg.data.description.type === 'offer';
+        if (student && isOffer && !room.permissions.speak) return;
         relayTo(room, String(msg.to), { type: 'rtc', from: peer.id, data: msg.data });
       }
     });
