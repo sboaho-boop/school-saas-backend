@@ -231,7 +231,12 @@ try {
   startCronWorkers();
 } catch (e) { console.error('Cron workers failed to start:', e.message); }
 
-app.listen(PORT, async () => {
+const http = require('http');
+const server = http.createServer(app);
+const { attachClassroomSocket } = require('./ws/classroom');
+attachClassroomSocket(server);
+
+server.listen(PORT, async () => {
   console.log(`EDUPLATFORM SOFTWARE SERVICES API running on http://localhost:${PORT}`);
   try {
     const bcrypt = require('bcryptjs');

@@ -227,6 +227,92 @@ router.get('/lessons/:id', async (req, res) => {
   }
 });
 
+// Teacher starts a lesson -> creates the live classroom room.
+const FRONTEND_BASE = process.env.FRONTEND_BASE_URL || 'https://eduplatformsoftware.com';
+
+router.post('/teacher/lessons/:id/start', authenticateMarketplace, requireRole('teacher'), async (req, res) => {
+  try {
+    const lesson = await prisma.marketplaceLesson.findUnique({ where: { id: req.params.id } });
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    if (lesson.teacherId !== req.actorId) return res.status(403).json({ error: 'Forbidden' });
+    if (lesson.status === 'cancelled') return res.status(400).json({ error: 'Cancelled lessons cannot be started' });
+
+    const updated = await prisma.marketplaceLesson.update({
+      where: { id: lesson.id },
+      data: { status: 'live', roomReady: true, joinLink: `${FRONTEND_BASE}/marketplace/room/${lesson.id}` },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error('Marketplace start lesson error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Teacher ends a lesson -> closes the classroom room.
+router.post('/teacher/lessons/:id/end', authenticateMarketplace, requireRole('teacher'), async (req, res) => {
+  try {
+    const lesson = await prisma.marketplaceLesson.findUnique({ where: { id: req.params.id } });
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    if (lesson.teacherId !== req.actorId) return res.status(403).json({ error: 'Forbidden' });
+
+    const updated = await prisma.marketplaceLesson.update({
+      where: { id: lesson.id },
+      data: { status: 'ended', roomReady: false, joinLink: '' },
+    });
+    try {
+      const { notifyLessonEnded } = require('../ws/classroom');
+      notifyLessonEnded(lesson.id);
+    } catch {}
+    res.json(updated);
+  } catch (err) {
+    console.error('Marketplace end lesson error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Room access check used by the classroom page.
+router.get('/room/:lessonId', authenticateMarketplace, async (req, res) => {
+  try {
+    const lesson = await prisma.marketplaceLesson.findUnique({ where: { id: req.params.lessonId } });
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+
+    let me = null;
+    if (req.actorRole === 'teacher') {
+      const teacher = await prisma.marketplaceTeacher.findUnique({ where: { id: req.actorId }, select: { id: true, name: true } });
+      if (!teacher) return res.status(403).json({ error: 'Teacher account not found' });
+      if (teacher.id !== lesson.teacherId) return res.status(403).json({ error: 'Forbidden' });
+      me = { id: teacher.id, name: teacher.name, role: 'teacher' };
+    } else {
+      const student = await prisma.marketplaceStudent.findUnique({ where: { id: req.actorId }, select: { id: true, name: true } });
+      if (!student) return res.status(403).json({ error: 'Student account not found' });
+      const enrollment = await prisma.marketplaceEnrollment.findFirst({
+        where: { lessonId: lesson.id, studentId: student.id, status: 'paid' },
+      });
+      if (!enrollment) return res.status(403).json({ error: 'You are not enrolled in this lesson' });
+      me = { id: student.id, name: student.name, role: 'student' };
+    }
+
+    res.json({
+      lesson: {
+        id: lesson.id,
+        title: lesson.title,
+        subject: lesson.subject,
+        description: lesson.description,
+        status: lesson.status,
+        date: lesson.date,
+        startTime: lesson.startTime,
+        endTime: lesson.endTime,
+        joinLink: lesson.joinLink,
+        roomReady: lesson.roomReady,
+      },
+      me,
+    });
+  } catch (err) {
+    console.error('Marketplace room access error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Teacher schedules a lesson.
 router.post('/teacher/lessons', authenticateMarketplace, requireRole('teacher'), async (req, res) => {
   try {
