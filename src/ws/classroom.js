@@ -50,20 +50,31 @@ async function verifyAccess(decoded, lessonId) {
     if (lesson.teacherId !== decoded.id) return { ok: false, status: 403, message: 'Forbidden' };
     return { ok: true, lesson };
   }
-  if (decoded.role === 'student') {
-    const enrollment = await prisma.marketplaceEnrollment.findFirst({
-      where: { lessonId, studentId: decoded.id, status: 'paid' },
-    });
-    if (!enrollment) return { ok: false, status: 403, message: 'You are not enrolled in this lesson' };
+  if (decoded.role === 'guest') {
+    // Guest tokens are scoped to one lesson; must be an 'open' lesson.
+    if (decoded.lessonId !== lesson.id || lesson.accessMode !== 'open') {
+      return { ok: false, status: 403, message: 'Guest access is not allowed for this lesson' };
+    }
     return { ok: true, lesson };
   }
-  return { ok: false, status: 403, message: 'Forbidden' };
+  // student role
+  const enrollment = await prisma.marketplaceEnrollment.findFirst({
+    where: { lessonId, studentId: decoded.id, status: 'paid' },
+  });
+  // 'open' lessons accept any signed-in student, even un-enrolled.
+  if (!enrollment && lesson.accessMode !== 'open') {
+    return { ok: false, status: 403, message: 'You are not enrolled in this lesson' };
+  }
+  return { ok: true, lesson };
 }
 
 async function loadPeer(decoded) {
   if (decoded.role === 'teacher') {
     const t = await prisma.marketplaceTeacher.findUnique({ where: { id: decoded.id }, select: { id: true, name: true } });
     return t ? { id: t.id, name: t.name, role: 'teacher' } : null;
+  }
+  if (decoded.role === 'guest') {
+    return { id: decoded.id, name: decoded.name || 'Guest', role: 'guest' };
   }
   const s = await prisma.marketplaceStudent.findUnique({ where: { id: decoded.id }, select: { id: true, name: true } });
   return s ? { id: s.id, name: s.name, role: 'student' } : null;
@@ -155,7 +166,8 @@ function attachClassroomSocket(server) {
       }
 
       const isTeacher = peer.role === 'teacher';
-      const student = peer.role === 'student';
+      // guests are treated like students for permission gating
+      const student = peer.role === 'student' || peer.role === 'guest';
 
       if (msg.type === 'chat') {
         const text = String(msg.text || '').slice(0, 2000).trim();

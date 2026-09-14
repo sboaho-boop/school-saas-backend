@@ -26,6 +26,24 @@ function signToken(role, id) {
   return jwt.sign({ id, type: 'marketplace', role }, JWT_SECRET, { expiresIn: '30d' });
 }
 
+// Scoped guest token for an 'open' lesson. Binds the bearer to a single lesson.
+function signGuestToken(lessonId, name) {
+  return jwt.sign(
+    { id: `guest-${Math.random().toString(36).slice(2, 10)}`, type: 'marketplace', role: 'guest', lessonId, name },
+    JWT_SECRET,
+    { expiresIn: '12h' }
+  );
+}
+
+function normalizeAccessMode(v) {
+  const mode = String(v || 'enrolled');
+  return mode === 'open' ? 'open' : 'enrolled';
+}
+
+function normalizePasscode(v) {
+  return String(v || '').trim().slice(0, 12);
+}
+
 function authenticateMarketplace(req, res, next) {
   try {
     const auth = req.headers.authorization;
@@ -34,6 +52,8 @@ function authenticateMarketplace(req, res, next) {
     if (decoded.type !== 'marketplace') return res.status(401).json({ error: 'Invalid token' });
     req.actorId = decoded.id;
     req.actorRole = decoded.role;
+    req.actorLessonId = decoded.lessonId;
+    req.actorName = decoded.name;
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid token' });
@@ -293,13 +313,21 @@ router.get('/room/:lessonId', authenticateMarketplace, async (req, res) => {
       if (!teacher) return res.status(403).json({ error: 'Teacher account not found' });
       if (teacher.id !== lesson.teacherId) return res.status(403).json({ error: 'Forbidden' });
       me = { id: teacher.id, name: teacher.name, role: 'teacher' };
+    } else if (req.actorRole === 'guest') {
+      // Guest tokens are scoped to one lesson; double-check the claim.
+      if (req.actorLessonId !== lesson.id) return res.status(403).json({ error: 'Forbidden' });
+      if (lesson.accessMode !== 'open') return res.status(403).json({ error: 'This lesson is for enrolled students only' });
+      me = { id: req.actorId, name: req.actorName || 'Guest', role: 'guest' };
     } else {
       const student = await prisma.marketplaceStudent.findUnique({ where: { id: req.actorId }, select: { id: true, name: true } });
       if (!student) return res.status(403).json({ error: 'Student account not found' });
       const enrollment = await prisma.marketplaceEnrollment.findFirst({
         where: { lessonId: lesson.id, studentId: student.id, status: 'paid' },
       });
-      if (!enrollment) return res.status(403).json({ error: 'You are not enrolled in this lesson' });
+      // 'open' lessons accept any signed-in student, even un-enrolled.
+      if (!enrollment && lesson.accessMode !== 'open') {
+        return res.status(403).json({ error: 'You are not enrolled in this lesson' });
+      }
       me = { id: student.id, name: student.name, role: 'student' };
     }
 
@@ -315,12 +343,67 @@ router.get('/room/:lessonId', authenticateMarketplace, async (req, res) => {
         endTime: lesson.endTime,
         joinLink: lesson.joinLink,
         roomReady: lesson.roomReady,
+        accessMode: lesson.accessMode,
+        hasPasscode: lesson.accessMode === 'open' && !!lesson.passcode,
       },
       me,
     });
   } catch (err) {
     console.error('Marketplace room access error:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Public lesson info (no auth) so the room page can offer guest join for open lessons.
+router.get('/room/:lessonId/info', async (req, res) => {
+  try {
+    const lesson = await prisma.marketplaceLesson.findUnique({
+      where: { id: req.params.lessonId },
+      select: { id: true, title: true, subject: true, status: true, accessMode: true, passcode: true, roomReady: true },
+    });
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    res.json({
+      lesson: {
+        id: lesson.id,
+        title: lesson.title,
+        subject: lesson.subject,
+        status: lesson.status,
+        roomReady: lesson.roomReady,
+        accessMode: lesson.accessMode,
+        open: lesson.accessMode === 'open',
+        hasPasscode: lesson.accessMode === 'open' && !!lesson.passcode,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Guest join for 'open' lessons. Anyone with the link + (optional) passcode
+// gets a short-lived token scoped to this lesson only.
+router.post('/room/:lessonId/guest', async (req, res) => {
+  try {
+    const lesson = await prisma.marketplaceLesson.findUnique({ where: { id: req.params.lessonId } });
+    if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
+    if (lesson.accessMode !== 'open') {
+      return res.status(403).json({ error: 'This lesson is for enrolled students only. Join the marketplace to enroll.' });
+    }
+    if (lesson.passcode && String(req.body?.passcode || '') !== lesson.passcode) {
+      return res.status(401).json({ error: 'Incorrect passcode. Ask the teacher for the class code.' });
+    }
+    const name = String(req.body?.name || '').trim().slice(0, 60) || 'Guest';
+    const token = signGuestToken(lesson.id, name);
+    res.json({
+      token,
+      me: {
+        id: jwt.decode(token).id,
+        name,
+        role: 'guest',
+      },
+    });
+  } catch (err) {
+    console.error('Marketplace guest join error:', err.message);
+    res.status(500).json({ error: 'Could not join as guest' });
   }
 });
 
@@ -340,7 +423,7 @@ router.post('/room/upload', authenticateMarketplace, mediaUpload.single('file'),
 // Teacher schedules a lesson.
 router.post('/teacher/lessons', authenticateMarketplace, requireRole('teacher'), async (req, res) => {
   try {
-    const { subject, title, description, price, date, startTime, durationMin, maxStudents } = req.body;
+    const { subject, title, description, price, date, startTime, durationMin, maxStudents, accessMode, passcode } = req.body;
     if (!subject || !title) return res.status(400).json({ error: 'Subject and title are required' });
     if (!date || !startTime) return res.status(400).json({ error: 'A date and start time are required' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Invalid date format' });
@@ -352,6 +435,12 @@ router.post('/teacher/lessons', authenticateMarketplace, requireRole('teacher'),
     const start = new Date(`1970-01-01T${startTime}`);
     const end = new Date(start.getTime() + dur * 60000);
     const endTime = [String(end.getHours()).padStart(2, '0'), String(end.getMinutes()).padStart(2, '0')].join(':');
+
+    const mode = normalizeAccessMode(accessMode);
+    const code = normalizePasscode(passcode);
+    if (mode === 'open' && !code) {
+      return res.status(400).json({ error: 'Open lessons need a passcode so guests can join safely' });
+    }
 
     const lesson = await prisma.marketplaceLesson.create({
       data: {
@@ -365,6 +454,8 @@ router.post('/teacher/lessons', authenticateMarketplace, requireRole('teacher'),
         endTime,
         durationMin: dur,
         maxStudents: Number(maxStudents) || 50,
+        accessMode: mode,
+        passcode: mode === 'open' ? code : '',
       },
     });
     res.status(201).json(lesson);
@@ -410,7 +501,7 @@ router.put('/teacher/lessons/:id', authenticateMarketplace, requireRole('teacher
     if (!lesson) return res.status(404).json({ error: 'Lesson not found' });
     if (lesson.teacherId !== req.actorId) return res.status(403).json({ error: 'Forbidden' });
 
-    const { subject, title, description, price, date, startTime, durationMin, maxStudents, status, joinLink, roomReady } = req.body;
+    const { subject, title, description, price, date, startTime, durationMin, maxStudents, status, joinLink, roomReady, accessMode, passcode } = req.body;
     const data = {};
     if (subject !== undefined) data.subject = subject;
     if (title !== undefined) data.title = title;
@@ -419,6 +510,18 @@ router.put('/teacher/lessons/:id', authenticateMarketplace, requireRole('teacher
     if (date !== undefined) data.date = date;
     if (joinLink !== undefined) data.joinLink = joinLink;
     if (roomReady !== undefined) data.roomReady = roomReady;
+    if (accessMode !== undefined) {
+      const mode = normalizeAccessMode(accessMode);
+      if (mode === 'open') {
+        const code = passcode !== undefined ? normalizePasscode(passcode) : lesson.passcode || '';
+        if (!code) return res.status(400).json({ error: 'Open lessons need a passcode so guests can join safely' });
+        data.accessMode = mode;
+        data.passcode = code;
+      } else {
+        data.accessMode = 'enrolled';
+        data.passcode = '';
+      }
+    }
     if (status !== undefined) {
       if (!['scheduled', 'live', 'ended', 'cancelled'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
       data.status = status;

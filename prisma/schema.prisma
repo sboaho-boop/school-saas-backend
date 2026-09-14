@@ -1252,6 +1252,8 @@ model MarketplaceLesson {
   maxStudents Int      @default(50)
   joinLink    String   @default("")
   roomReady   Boolean  @default(false)
+  accessMode  String   @default("enrolled") // 'enrolled' (paid only) or 'open' (anyone with link, optional passcode)
+  passcode    String   @default("")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
