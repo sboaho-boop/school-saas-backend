@@ -350,15 +350,30 @@ router.post('/teacher/lessons', authenticateMarketplace, requireRole('teacher'),
   }
 });
 
-// Teacher's own lessons.
+// Teacher's own lessons (with paid student names).
 router.get('/teacher/lessons', authenticateMarketplace, requireRole('teacher'), async (req, res) => {
   try {
     const lessons = await prisma.marketplaceLesson.findMany({
       where: { teacherId: req.actorId },
       orderBy: [{ date: 'desc' }, { startTime: 'desc' }],
-      include: { _count: { select: { enrollments: { where: { status: 'paid' } } } } },
+      include: {
+        _count: { select: { enrollments: { where: { status: 'paid' } } } },
+        enrollments: {
+          where: { status: 'paid' },
+          orderBy: { createdAt: 'asc' },
+          include: { student: { select: { id: true, name: true, email: true } } },
+        },
+      },
     });
-    res.json(lessons.map((l) => ({ ...l, paidStudents: l._count.enrollments, _count: undefined })));
+    res.json(
+      lessons.map((l) => ({
+        ...l,
+        paidStudents: l._count.enrollments,
+        _count: undefined,
+        students: l.enrollments.map((e) => ({ id: e.student.id, name: e.student.name, email: e.student.email })),
+        enrollments: undefined,
+      }))
+    );
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
