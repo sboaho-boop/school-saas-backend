@@ -17,6 +17,7 @@ function defaultRoom() {
     media: [], // { id, kind, url, x, y, w, h }
     permissions: { draw: false, share: false, speak: false }, // applied to students
     feedActive: false,
+    cast: null, // { active, kind: 'screen' | 'pdf', itemId? }
   };
 }
 
@@ -170,6 +171,7 @@ function attachClassroomSocket(server) {
       media: room.media,
       permissions: { ...room.permissions },
       feedActive: room.feedActive,
+      cast: room.cast,
     });
 
     broadcast(room, { type: 'presence', participants: presenceList(room) }, ws);
@@ -254,7 +256,22 @@ function attachClassroomSocket(server) {
         const idx = room.media.findIndex((m) => m.id === msg.id);
         if (idx === -1) return;
         room.media.splice(idx, 1);
+        if (room.cast && room.cast.kind === 'pdf' && room.cast.itemId === msg.id) room.cast = null;
         broadcast(room, { type: 'mediaRemove', id: msg.id });
+        if (room.cast === null) broadcast(room, { type: 'castBoard', cast: null });
+      } else if (msg.type === 'castBoard') {
+        // Teacher-only: cast a screen share or PDF deck to the board for a
+        // big, shared presentation view that everyone follows.
+        if (!isTeacher) return;
+        const c = msg.cast;
+        room.cast = c && c.active
+          ? {
+              active: true,
+              kind: c.kind === 'pdf' ? 'pdf' : 'screen',
+              itemId: c.kind === 'pdf' ? String(c.itemId || '') : (room.cast && room.cast.itemId) || undefined,
+            }
+          : null;
+        broadcast(room, { type: 'castBoard', cast: room.cast });
       } else if (msg.type === 'rtc') {
         if (!msg.to || !msg.data) return;
         // A student may only initiate an offer (begin speaking) if the
