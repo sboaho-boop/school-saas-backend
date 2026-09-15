@@ -198,6 +198,22 @@ const path = require('path');
 const fs = require('fs');
 const uploadDir = process.env.UPLOAD_DIR || (process.env.RAILWAY_VOLUME_MOUNT ? path.join(process.env.RAILWAY_VOLUME_MOUNT, 'uploads') : path.join(__dirname, '..', 'uploads'));
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+// Classroom board uploads are served from Postgres first (durable across
+// deploys/restarts), falling back to the static disk dir for legacy files.
+app.get('/uploads/:name', async (req, res, next) => {
+  try {
+    const file = await prisma.marketplaceFile.findUnique({ where: { name: req.params.name } });
+    if (!file) return next();
+    res.setHeader('Content-Type', file.mime || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Length', String(file.size));
+    res.end(file.data);
+  } catch {
+    next();
+  }
+});
 app.use('/uploads', express.static(uploadDir, { maxAge: '1d', immutable: true, fallthrough: false }));
 
 app.get('/api/audit-logs', require('./middleware/auth').authenticate, require('./middleware/auth').requireRole('headteacher', 'admin'), async (req, res) => {

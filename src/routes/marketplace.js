@@ -9,14 +9,9 @@ const { publicBaseUrl } = require('../lib/urls');
 
 const router = Router();
 
-const UPLOAD_DIR = process.env.UPLOAD_DIR
-  || (process.env.RAILWAY_VOLUME_MOUNT ? path.join(process.env.RAILWAY_VOLUME_MOUNT, 'uploads') : path.join(__dirname, '..', '..', 'uploads'));
-
-const mediaStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => cb(null, `mkt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${path.extname(file.originalname || '')}`),
-});
-const mediaUpload = multer({ storage: mediaStorage, limits: { fileSize: 10 * 1024 * 1024 } });
+// Board uploads are kept in memory then persisted to Postgres (MarketplaceFile)
+// because Render's filesystem is ephemeral - slides would vanish on every deploy.
+const mediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const JWT_SECRET = process.env.JWT_SECRET || 'teacher-kofi-secret';
 const CHANNELS = ['mtn-gh', 'vodafone-gh', 'tigo-gh'];
@@ -433,7 +428,7 @@ router.post('/room/:lessonId/guest', async (req, res) => {
 
 // Media/board upload (authenticated). The room WS enforces who may actually
 // attach media to the board; this just stores the file and returns a URL.
-router.post('/room/upload', authenticateMarketplace, mediaUpload.single('file'), (req, res) => {
+router.post('/room/upload', authenticateMarketplace, mediaUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const mime = String(req.file.mimetype || '');
@@ -443,7 +438,12 @@ router.post('/room/upload', authenticateMarketplace, mediaUpload.single('file'),
         : req.body.kind === 'pdf' || mime === 'application/pdf'
           ? 'pdf'
           : 'image';
-    res.json({ url: `/uploads/${req.file.filename}`, kind });
+    const ext = (path.extname(req.file.originalname || '') || '').slice(0, 12).toLowerCase();
+    const name = `mkt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
+    await prisma.marketplaceFile.create({
+      data: { name, mime, size: req.file.size, data: req.file.buffer },
+    });
+    res.json({ url: `/uploads/${name}`, kind });
   } catch (err) {
     console.error('Marketplace media upload error:', err.message);
     res.status(500).json({ error: 'Upload failed' });

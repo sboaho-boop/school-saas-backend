@@ -1300,3 +1300,15 @@ model MarketplaceEnrollment {
   student MarketplaceStudent   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   teacher MarketplaceTeacher   @relation(fields: [teacherId], references: [id], onDelete: Cascade)
 }
+
+// Durable storage for classroom board uploads (slides, images, videos).
+// Render's filesystem is ephemeral, so files must live in Postgres to survive
+// deploys/restarts.
+model MarketplaceFile {
+  id        String   @id @default(cuid())
+  name      String   @unique // served as /uploads/<name>
+  mime      String   @default("application/octet-stream")
+  size      Int      @default(0)
+  data      Bytes
+  createdAt DateTime @default(now())
+}
