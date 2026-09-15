@@ -216,7 +216,7 @@ function attachClassroomSocket(server) {
         broadcast(room, { type: 'feed', active: room.feedActive });
       } else if (msg.type === 'mediaAdd') {
         if (student && !room.permissions.share) return;
-        const kind = msg.kind === 'video' ? 'video' : 'image';
+        const kind = msg.kind === 'video' ? 'video' : msg.kind === 'pdf' ? 'pdf' : 'image';
         if (!msg.url || typeof msg.url !== 'string' || msg.url.length > 5000) return;
         const item = {
           id: `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
@@ -226,11 +226,21 @@ function attachClassroomSocket(server) {
           x: Math.max(0, Math.min(90, Number(msg.x) || 20)),
           y: Math.max(0, Math.min(80, Number(msg.y) || 10)),
           by: peer.id,
+          page: kind === 'pdf' ? Math.max(1, Number(msg.page) || 1) : undefined,
         };
         room.media.push(item);
         if (room.media.length > MAX_MEDIA) room.media.splice(0, room.media.length - MAX_MEDIA);
         broadcast(room, { type: 'mediaAdd', item });
         send(ws, { type: 'mediaAdd', item });
+      } else if (msg.type === 'pdfPage') {
+        // Anyone authorized to share may flip the slide deck; the new page is
+        // broadcast so every participant renders the same slide.
+        if (student && !room.permissions.share) return;
+        const item = room.media.find((m) => m.id === msg.id && m.kind === 'pdf');
+        if (!item) return;
+        const page = Math.max(1, Number(msg.page) || 1);
+        item.page = page;
+        broadcast(room, { type: 'pdfPage', id: msg.id, page });
       } else if (msg.type === 'mediaMoved') {
         if (student && !room.permissions.share) return;
         const item = room.media.find((m) => m.id === msg.id);

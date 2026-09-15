@@ -436,7 +436,13 @@ router.post('/room/:lessonId/guest', async (req, res) => {
 router.post('/room/upload', authenticateMarketplace, mediaUpload.single('file'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const kind = (req.body.kind === 'video' || String(req.file.mimetype || '').startsWith('video/')) ? 'video' : 'image';
+    const mime = String(req.file.mimetype || '');
+    const kind =
+      req.body.kind === 'video' || mime.startsWith('video/')
+        ? 'video'
+        : req.body.kind === 'pdf' || mime === 'application/pdf'
+          ? 'pdf'
+          : 'image';
     res.json({ url: `/uploads/${req.file.filename}`, kind });
   } catch (err) {
     console.error('Marketplace media upload error:', err.message);
